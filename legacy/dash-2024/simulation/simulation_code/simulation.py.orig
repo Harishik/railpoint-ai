@@ -1,0 +1,38 @@
+import os
+import csv
+import time
+import random
+from datetime import datetime
+
+# Simulation parameters
+SIMULATION_DURATION = 70  # Run for 70 seconds
+BATCH_SIZE = 1200  # Number of rows per batch
+PMD_TYPES = [f"PMD{str(i).zfill(3)}" for i in range(1, 57)]  # 56 PMD types
+
+# Directory to save data
+DATA_DIR = "../data"
+DATA_FILE = os.path.join(DATA_DIR, "simulated_data.csv")
+
+# Create the simulated_data.csv file
+if not os.path.exists(DATA_FILE):
+    with open(DATA_FILE, mode="w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["timestamp", "pmd_type", "value", "status"])  # Header
+
+# Function to generate data
+def generate_simulation_data():
+    start_time = time.time()
+    while time.time() - start_time < SIMULATION_DURATION:
+        with open(DATA_FILE, mode="a", newline="") as file:
+            writer = csv.writer(file)
+            for _ in range(BATCH_SIZE):
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                pmd_type = random.choice(PMD_TYPES)
+                value = random.uniform(10, 300)  # Simulated value
+                status = "normal" if random.random() > 0.1 else "error"
+                writer.writerow([timestamp, pmd_type, value, status])
+        print(f"Batch written to {DATA_FILE}")
+        time.sleep(10)  # Wait before the next batch
+
+if __name__ == "__main__":
+    generate_simulation_data()

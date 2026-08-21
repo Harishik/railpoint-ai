@@ -1,0 +1,69 @@
+# Defect log — 2024 FaultForce codebase
+
+Every defect found in the code delivered by the 2024 capstone, with the original
+line reference and what was done about it. The original files are preserved
+verbatim as `*.orig` beside their repaired counterparts in `legacy/dash-2024/`,
+so every claim here is checkable.
+
+**34 defects across 4 files.** Three are severe enough that the delivered system
+could not have done what the final report says it did:
+
+- **APP-03** — there is no machine-learning model anywhere in the delivered code.
+- **APP-04** — the only real dataset is loaded and then never referenced.
+- **SIM-04** — the simulator's label is drawn independently of its signal.
+
+---
+
+## `app.py` — Dash dashboard (15)
+
+| ID | Line | Defect | Fix |
+|---|---|---|---|
+| APP-01 | 9–10 | Dataset paths hardcoded to `C:\Users\singh\Downloads\...`. Crashes anywhere but that one Windows machine. | Resolve relative to `__file__`, with a `FAULTFORCE_DATA_DIR` override. |
+| APP-02 | 311 | `app.run_server()` was removed in Dash 3.x. On Dash 3.4 it raises `ObsoleteAttributeException` — the app is dead on arrival. | `app.run()`. |
+| APP-03 | 40 | **The "Prediction" is a hardcoded threshold, `ac_curr <= 260`, not a model.** It is applied to `np.random.uniform(0.1, 300)`, so it labels pure noise. Real machine current never exceeds 15.74 A, so on real data the rule can never fire at all. | Kept as an explicitly-named `HEURISTIC_THRESHOLD_A`, recalibrated to 12 A, with a banner in the UI stating it is not a model. Trained models live in the new system. |
+| APP-04 | 13 | **`processed_dataset.csv` — the only real data in the project — is read into `dataset` and never referenced again.** Every chart on screen plots freshly generated random numbers. | Real data now drives the machine list and a new Failure Analysis page that plots the actual traces. |
+| APP-05 | 52–58, 88–100 | `create_graph()` assigns ids (`station-1-normal-data`, …) and takes a `title` argument; the callback then replaces the container's children wholesale with different graphs. Both the ids and the title are dead code. | Removed; figures are built in one place. |
+| APP-06 | 221 | The chart captioned "Normal Data" plots *every* row regardless of label. | Filters to `Prediction == "Normal"` and reports the count. |
+| APP-07 | 246 | The "Predicted Data" chart is a byte-for-byte copy of the Normal chart, recoloured by row 0's label. It shows no prediction. | Replaced with a decision plot: signal, threshold line, and the points that crossed it. |
+| APP-08 | 29–31 | `np.random.choice([...,"E04", None])` produces an object-dtype column; merging on it is fragile. | Sentinel string converted to `pd.NA` after the draw. |
+| APP-09 | 202 | A 200-row Bootstrap HTML table is re-rendered every 4 s with no pagination. | Paginated, sortable, filterable `DataTable`. |
+| APP-10 | 22 | `np.random.seed()` with no argument reseeds from OS entropy on *every* callback, making the app non-reproducible by construction. | Explicit `default_rng(seed)`, seeded per tick. |
+| APP-11 | 14 | The EUC-KR Korean maintenance table renders as mojibake in the UI. | Decoded once into a KO/EN table (`data/raw/sehwa/error_codes.csv`). |
+| APP-12 | 119–121 | Every `NavLink` is `href="#"`. "Failure Analysis" and "Reports" do nothing. | `dcc.Location` routing; all three pages implemented. |
+| APP-13 | 311 | `debug=True` hardcoded in the entrypoint. | CLI flag / `DASH_DEBUG` env, default off. |
+| APP-14 | — | No `requirements.txt`, `pyproject.toml` or environment file anywhere in either zip. | Pinned `requirements.txt`. |
+| APP-15 | 79–81 | Dropdowns offer PMD001 / PMD014 / PMD020, but the dataset only ever contained PMD014 and PMD055. Two of three options select nothing. | Options derived from the data. |
+
+## `server.py` — Flask simulation server (8)
+
+| ID | Line | Defect | Fix |
+|---|---|---|---|
+| SRV-01 | 65–66 | `start_background_task` plus `debug=True` makes the Werkzeug reloader fork the process, starting the generator thread **twice** at double the intended rate. | `use_reloader=False`; debug off by default. |
+| SRV-02 | 14, 25 | The simulation hard-stops after 90 s. The server keeps serving the same frozen buffer forever with no indication it has stopped. | Runs until stopped; `/health` reports `last_batch_age_s` and a `stale` flag. |
+| SRV-03 | 42–45 | `real_time_data` is `extend`ed *and rebound* from a background thread with no lock, racing every `/data` reader. | `collections.deque(maxlen=…)` under a lock; bounded by construction. |
+| SRV-04 | 10 | `SECRET_KEY` is literally the string `'your_secret_key'`. | From env, random default. |
+| SRV-05 | 57–61 | The `/data` docstring promises 100 records; the code returns 1000. | Validated `limit` query parameter; 400 on bad input. |
+| SRV-06 | 11, 48 | `flask_socketio` emits `update_data` on every batch, but **no client ever subscribes** — `dashboard.py` polls `/data` over HTTP instead. The entire SocketIO dependency is dead weight. | Removed. The new backend uses WebSockets with a client that actually listens. |
+| SRV-07 | 3–4 | `os` and `csv` imported, never used. | Removed. |
+| SRV-08 | — | No CORS configuration, so a browser client served from :8050 can never call :5000. | `flask-cors`, origin configurable. |
+
+## `simulation.py` — offline CSV simulator (5)
+
+| ID | Line | Defect | Fix |
+|---|---|---|---|
+| SIM-01 | 13–14, 18 | `DATA_DIR = "../data"` is relative, so the script only works when run from inside `simulation_code/`; and `os.makedirs` is never called, so `open()` raises outright if the directory is absent. | Path resolved from `__file__`; `mkdir(parents=True, exist_ok=True)`. |
+| SIM-02 | 17–20 | The header is written only when the file does not exist. **The shipped `simulated_data.csv` has no header row at all across 45,000 lines** — proof it was generated in a broken state and appended to ever since. | Header validated on every run; a headerless file is moved aside, not appended to. |
+| SIM-03 | 26–35 | Unbounded growth: 1,200 rows every 10 s, forever, with no rotation. | `--max-rows` with rotation. |
+| SIM-04 | 31–32 | **`value` and `status` are drawn from two independent random calls.** The label has no relationship whatsoever to the signal, so no model could ever learn anything from this file. | `status` derived from `ac_curr`. |
+| SIM-05 | 20 | Columns (`timestamp,pmd_type,value,status`) do not match `server.py`'s schema (which adds `ac_volt`, `ac_curr`). The two "simulators" emit mutually incompatible records. | Unified schema. |
+
+## `dashboard.py` — simulation dashboard (6)
+
+| ID | Line | Defect | Fix |
+|---|---|---|---|
+| DBD-01 | 112 | `app.run_server()` — removed in Dash 3.x. | `app.run()`. |
+| DBD-02 | 65 | `requests.get` with **no timeout**. A hung server blocks the Dash worker thread indefinitely. | 4 s timeout. |
+| DBD-03 | 106–109 | A single bare `except Exception` collapses timeout, connection refused, HTTP error and bad JSON into one red dot, with no logging. | Each failure mode caught, logged and reported distinctly. |
+| DBD-04 | 69, 109 | Returns `{}` as a Plotly figure, which renders broken rather than empty. | Proper empty figure carrying the reason. |
+| DBD-05 | 75–93 | Three 56-category bar charts rebuilt every 5 s, averaging over a rolling window that mixes machines, so the bars jitter meaninglessly. | Time series for the busiest machines plus a ranked peak-current snapshot. |
+| DBD-06 | 41, 96 | `page_size=10` on a table only ever handed `df.tail(10)` — the pagination is decorative. | Real window passed; sorting and filtering enabled. |

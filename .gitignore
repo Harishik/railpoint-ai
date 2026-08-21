@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv*/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Data — large / external / generated
+data/external/
+data/synthetic/
+data/processed/
+legacy/dash-2024/simulation/data/*.csv
+
+# Experiments
+mlruns/
+experiments/results/*.png
+*.onnx
+*.pt
+*.ckpt
+
+# Node
+node_modules/
+frontend/dist/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,311 @@
+import dash
+from dash import dcc, html, Input, Output, State
+import dash_bootstrap_components as dbc
+import plotly.graph_objs as go
+import pandas as pd
+import numpy as np
+
+# Correct dataset path
+dataset_path = r'C:\Users\singh\Downloads\python dash\data\processed_dataset.csv'
+maintenance_code_path = r'C:\Users\singh\Downloads\python dash\data\maintenance_code.csv'
+
+# Load datasets
+dataset = pd.read_csv(dataset_path)
+maintenance_data = pd.read_csv(maintenance_code_path, encoding='euc-kr')
+
+# ---------------------------------------
+# Simulation Logic
+# ---------------------------------------
+
+def generate_simulated_data(pmd_type="PMD001", num_events=100):
+    """Generate new synthetic data dynamically for simulation."""
+    np.random.seed()  # Ensure randomness for every callback
+    simulated_data = {
+        "event_num": np.arange(1, num_events + 1),
+        "pmd_type": [pmd_type] * num_events,
+        "direction": np.random.choice(["L", "R"], size=num_events),
+        "ac_curr": np.random.uniform(0.1, 300, num_events),  # Current (A)
+        "ac_volt": np.random.uniform(200, 400, num_events),  # Voltage (V)
+        "err_code": np.random.choice(
+            ["E01", "E02", "E03", "E04", None], size=num_events, p=[0.05, 0.05, 0.05, 0.05, 0.8]
+        ),  # Non-error events 80% of the time
+    }
+
+    df = pd.DataFrame(simulated_data)
+
+    # Recalculate Power (P = V * I)
+    df["Power"] = df["ac_curr"] * df["ac_volt"]
+
+    # Add Predictions
+    df["Prediction"] = ["Normal" if x <= 260 else "Abnormal" for x in df["ac_curr"]]
+
+    # Merge with Maintenance Data for Error Details
+    df = df.merge(maintenance_data, on="err_code", how="left")
+    df["detail"] = df["detail"].fillna("No error details")
+
+    return df
+
+# ---------------------------------------
+# Layout Components
+# ---------------------------------------
+
+def create_graph(graph_id, title):
+    """Create a graph component."""
+    return dcc.Graph(
+        id=graph_id,
+        config={"displayModeBar": False},
+        style={"border": "1px solid #770000", "margin": "10px", "flex": "1", "minWidth": "300px"},
+    )
+
+def pmd_status_indicator(prediction):
+    """Create a PMD status indicator based on prediction."""
+    color = "green" if prediction == "Normal" else "red" if prediction == "Abnormal" else "yellow"
+    return html.Span(style={
+        "backgroundColor": color,
+        "borderRadius": "50%",
+        "display": "inline-block",
+        "width": "15px",
+        "height": "15px",
+        "marginRight": "10px",
+    })
+
+def create_station_selector(station_name, dropdown_id):
+    """Create a dropdown for selecting PMDs for each station."""
+    return html.Div([
+        dbc.Label(f"Select PMD for {station_name}"),
+        dcc.Dropdown(
+            id=dropdown_id,
+            options=[
+                {"label": "PMD001", "value": "PMD001"},
+                {"label": "PMD014", "value": "PMD014"},
+                {"label": "PMD020", "value": "PMD020"},
+            ],
+            value="PMD001",
+            clearable=False,
+        ),
+    ], style={"marginBottom": "10px", "width": "100%"})
+
+def create_station_graphs(station_name, station_id):
+    """Create graphs for station-specific data."""
+    return html.Div(
+        id=f"{station_id}-graphs-container",
+        children=[
+            html.Div([
+                create_graph(f"{station_id}-normal-data", f"{station_name}: Normal Data"),
+                create_graph(f"{station_id}-abnormal-data", f"{station_name}: Abnormal Data"),
+                create_graph(f"{station_id}-predicted-data", f"{station_name}: Predicted Data"),
+            ], style={"display": "flex", "justifyContent": "space-between", "flexWrap": "wrap", "width": "100%"}),
+        ],
+        style={"margin": "20px auto", "width": "95%"}
+    )
+
+def create_log_table(data):
+    """Create a log table for event details."""
+    return dbc.Table.from_dataframe(
+        data[["event_num", "pmd_type", "direction", "Prediction", "err_code", "detail"]],
+        striped=True,
+        bordered=True,
+        hover=True,
+        style={"marginTop": "20px", "border": "2px solid #770000", "width": "100%"},
+    )
+
+# Sidebar
+sidebar = html.Div(
+    [
+        html.Img(src="/assets/FaultForce Team Logo.png", style={"width": "100%", "padding": "10px"}),
+        html.Hr(style={"borderColor": "white"}),
+        dbc.Nav(
+            [
+                dbc.NavLink("Monitoring", href="#", active=False, style={"color": "white"}),
+                dbc.NavLink("Failure Analysis", href="#", active=False, style={"color": "white"}),
+                dbc.NavLink("Reports", href="#", active=False, style={"color": "white"}),
+            ],
+            vertical=True,
+            pills=True,
+        ),
+    ],
+    style={
+        "backgroundColor": "darkred",
+        "height": "100vh",
+        "padding": "20px",
+        "borderRight": "2px solid #770000",
+        "position": "fixed",
+        "top": 0,
+        "left": 0,
+        "width": "200px",
+        "boxSizing": "border-box",
+    },
+)
+
+# Top bar
+top_bar = dbc.Row(
+    [
+        dbc.Col(html.H3("PMD Predictive Maintenance", style={"color": "white", "margin": "0"}), md=8),
+    ],
+    style={"backgroundColor": "darkred", "padding": "10px", "marginLeft": "0px", "boxSizing": "border-box"},
+)
+
+# Info Box Header
+info_box_header = html.Div(
+    html.H4("PMD Machine Status", style={"textAlign": "center", "color": "white", "backgroundColor": "#770000", "padding": "5px", "borderRadius": "5px"}),
+    style={"width": "95%", "margin": "10px auto"}
+)
+
+# Main content
+content = html.Div(
+    [
+        top_bar,
+        info_box_header,
+        html.Div(id="real-time-info", style={
+            "padding": "10px", "backgroundColor": "#FFD6D6", "border": "1px solid #770000",
+            "width": "95%", "fontSize": "12px", "borderRadius": "5px", "margin": "10px auto"
+        }),
+        create_station_selector("Station 1", "station-1-dropdown"),
+        create_station_selector("Station 2", "station-2-dropdown"),
+        create_station_graphs("Station 1", "station-1"),
+        create_station_graphs("Station 2", "station-2"),
+        dcc.Interval(
+            id="interval-component",
+            interval=4000,
+            n_intervals=0,
+        ),
+        html.Div(id="log-table", style={"padding": "20px", "width": "95%", "margin": "0 auto"}),
+    ],
+    style={"backgroundColor": "#FFFDFD", "height": "100vh", "overflowY": "auto", "marginLeft": "200px", "boxSizing": "border-box"},
+)
+
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.FLATLY])
+app.layout = html.Div([sidebar, content])
+
+# ---------------------------------------
+# Callbacks
+# ---------------------------------------
+@app.callback(
+    [
+        Output("log-table", "children"),
+        Output("real-time-info", "children"),
+        Output("station-1-graphs-container", "children"),
+        Output("station-2-graphs-container", "children"),
+    ],
+    [
+        Input("interval-component", "n_intervals"),
+        Input("station-1-dropdown", "value"),
+        Input("station-2-dropdown", "value")
+    ],
+)
+def update_dashboard(n_intervals, pmd_station_1, pmd_station_2):
+    """Update dashboard data based on the selected PMDs."""
+    updated_data1 = generate_simulated_data(pmd_station_1)
+    updated_data2 = generate_simulated_data(pmd_station_2)
+
+    # Log table
+    log_table = create_log_table(pd.concat([updated_data1, updated_data2]))
+
+    # Real-time info
+    real_time_info = html.Div([
+        html.Div([
+            pmd_status_indicator(updated_data1.iloc[0]["Prediction"]),
+            html.Span(f"Station 1: PMD {pmd_station_1}, Events: {len(updated_data1)}, Errors: {updated_data1['err_code'].notna().sum()}")
+        ], style={"marginBottom": "5px"}),
+        html.Div([
+            pmd_status_indicator(updated_data2.iloc[0]["Prediction"]),
+            html.Span(f"Station 2: PMD {pmd_station_2}, Events: {len(updated_data2)}, Errors: {updated_data2['err_code'].notna().sum()}")
+        ])
+    ])
+
+    # Station 1 Graphs
+    station_1_graphs = html.Div([
+        dcc.Graph(
+            figure={
+                "data": [
+                    go.Scatter(
+                        x=updated_data1["event_num"],
+                        y=updated_data1["Power"],
+                        mode="lines",
+                        line=dict(color="green"),
+                        name="Normal"
+                    )
+                ],
+                "layout": go.Layout(title="Station 1: Normal Data", xaxis_title="Event Numbers", yaxis_title="Power")
+            }
+        ),
+        dcc.Graph(
+            figure={
+                "data": [
+                    go.Scatter(
+                        x=updated_data1[updated_data1["Prediction"] == "Abnormal"]["event_num"],
+                        y=updated_data1[updated_data1["Prediction"] == "Abnormal"]["Power"],
+                        mode="lines",
+                        line=dict(color="red"),
+                        name="Abnormal"
+                    )
+                ],
+                "layout": go.Layout(title="Station 1: Abnormal Data", xaxis_title="Event Numbers", yaxis_title="Power")
+            }
+        ),
+        dcc.Graph(
+            figure={
+                "data": [
+                    go.Scatter(
+                        x=updated_data1["event_num"],
+                        y=updated_data1["Power"],
+                        mode="lines",
+                        line=dict(color="green" if updated_data1.iloc[0]["Prediction"] == "Normal" else "red"),
+                        name="Predicted"
+                    )
+                ],
+                "layout": go.Layout(title="Station 1: Predicted Data", xaxis_title="Event Numbers", yaxis_title="Power")
+            }
+        )
+    ])
+
+    # Station 2 Graphs
+    station_2_graphs = html.Div([
+        dcc.Graph(
+            figure={
+                "data": [
+                    go.Scatter(
+                        x=updated_data2["event_num"],
+                        y=updated_data2["Power"],
+                        mode="lines",
+                        line=dict(color="green"),
+                        name="Normal"
+                    )
+                ],
+                "layout": go.Layout(title="Station 2: Normal Data", xaxis_title="Event Numbers", yaxis_title="Power")
+            }
+        ),
+        dcc.Graph(
+            figure={
+                "data": [
+                    go.Scatter(
+                        x=updated_data2[updated_data2["Prediction"] == "Abnormal"]["event_num"],
+                        y=updated_data2[updated_data2["Prediction"] == "Abnormal"]["Power"],
+                        mode="lines",
+                        line=dict(color="red"),
+                        name="Abnormal"
+                    )
+                ],
+                "layout": go.Layout(title="Station 2: Abnormal Data", xaxis_title="Event Numbers", yaxis_title="Power")
+            }
+        ),
+        dcc.Graph(
+            figure={
+                "data": [
+                    go.Scatter(
+                        x=updated_data2["event_num"],
+                        y=updated_data2["Power"],
+                        mode="lines",
+                        line=dict(color="green" if updated_data2.iloc[0]["Prediction"] == "Normal" else "red"),
+                        name="Predicted"
+                    )
+                ],
+                "layout": go.Layout(title="Station 2: Predicted Data", xaxis_title="Event Numbers", yaxis_title="Power")
+            }
+        )
+    ])
+
+    return log_table, real_time_info, station_1_graphs, station_2_graphs
+
+if __name__ == "__main__":
+    app.run_server(debug=True)

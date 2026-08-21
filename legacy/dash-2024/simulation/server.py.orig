@@ -1,0 +1,66 @@
+from flask import Flask, jsonify
+from flask_socketio import SocketIO, emit
+import os
+import csv
+import time
+import random
+from datetime import datetime
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'your_secret_key'
+socketio = SocketIO(app)
+
+# Simulation parameters
+SIMULATION_DURATION = 90  # Run for 90 seconds
+BATCH_SIZE = 600  # Number of rows per batch
+PMD_TYPES = [f"PMD{str(i).zfill(3)}" for i in range(1, 57)]  # 56 PMD types
+
+# Shared in-memory data store
+real_time_data = []
+
+# Function to generate and emit simulation data
+def generate_simulation_data():
+    global real_time_data
+    start_time = time.time()
+    while time.time() - start_time < SIMULATION_DURATION:
+        batch = []
+        for _ in range(BATCH_SIZE):
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            pmd_type = random.choice(PMD_TYPES)
+            ac_volt = round(random.uniform(200, 240), 2)  # Simulated AC voltage
+            ac_curr = round(random.uniform(0.1, 10), 2)  # Simulated AC current
+            value = round(ac_volt * ac_curr, 2)  # Derived value
+            status = "normal" if random.random() > 0.1 else "error"
+            batch.append({
+                "timestamp": timestamp,
+                "pmd_type": pmd_type,
+                "value": value,
+                "ac_volt": ac_volt,
+                "ac_curr": ac_curr,
+                "status": status
+            })
+        real_time_data.extend(batch)
+
+        # Limit the in-memory data size to avoid overflow
+        real_time_data = real_time_data[-5000:]  # Keep the last 5000 records
+
+        # Emit batch to connected clients
+        socketio.emit("update_data", batch)
+        time.sleep(5)  # Wait before generating the next batch
+
+@app.route('/')
+def index():
+    return jsonify({"message": "Flask Server for Real-Time Simulation"})
+
+@app.route('/data')
+def get_data():
+    """
+    Provides the latest 100 records of real-time data
+    for visualization on the dashboard.
+    """
+    return jsonify(real_time_data[-1000:])
+
+if __name__ == '__main__':
+    # Start simulation in a background thread
+    socketio.start_background_task(generate_simulation_data)
+    socketio.run(app, debug=True, port=5000)

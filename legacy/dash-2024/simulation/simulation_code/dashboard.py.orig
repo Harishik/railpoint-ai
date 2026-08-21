@@ -1,0 +1,113 @@
+from dash import Dash, dcc, html, dash_table
+from dash.dependencies import Input, Output
+import plotly.express as px
+import pandas as pd
+import requests
+
+app = Dash(__name__)
+
+# Layout with a status indicator
+app.layout = html.Div([
+    html.H1("Real-Time PMD Simulation Dashboard"),
+    html.Div([
+        html.Span("Status: ", style={"fontWeight": "bold", "fontSize": "18px"}),
+        html.Span(id="status-indicator", style={
+            "display": "inline-block",
+            "width": "20px",
+            "height": "20px",
+            "borderRadius": "50%",
+            "backgroundColor": "gray",
+            "marginRight": "10px"
+        }),
+        html.Span(id="live-status", style={"fontSize": "18px", "color": "black"})  # Text description
+    ], style={"marginBottom": "20px"}),
+    dcc.Graph(id="real-time-plot-value"),
+    dcc.Graph(id="real-time-plot-voltage"),
+    dcc.Graph(id="real-time-plot-current"),
+    html.H2("Logs Table"),
+    dash_table.DataTable(
+        id="logs-table",
+        columns=[
+            {"name": "Timestamp", "id": "timestamp"},
+            {"name": "PMD Type", "id": "pmd_type"},
+            {"name": "Voltage (ac_volt)", "id": "ac_volt"},
+            {"name": "Current (ac_curr)", "id": "ac_curr"},
+            {"name": "Value", "id": "value"},
+            {"name": "Status", "id": "status"}
+        ],
+        style_table={'overflowX': 'auto', 'height': '400px', 'overflowY': 'auto'},
+        style_header={'fontWeight': 'bold', 'textAlign': 'center'},
+        style_cell={'textAlign': 'center', 'fontSize': '14px'},
+        page_size=10  # Display 10 rows per page
+    ),
+    dcc.Interval(
+        id="interval-component",
+        interval=5000,  # Update every 5 seconds
+        n_intervals=0
+    )
+])
+
+# Callback to update graphs, logs, and live status with a visual indicator
+@app.callback(
+    [
+        Output("real-time-plot-value", "figure"),
+        Output("real-time-plot-voltage", "figure"),
+        Output("real-time-plot-current", "figure"),
+        Output("logs-table", "data"),
+        Output("live-status", "children"),  # For live status text
+        Output("status-indicator", "style"),  # For visual status indicator
+    ],
+    [Input("interval-component", "n_intervals")]
+)
+def update_dashboard(n):
+    try:
+        # Fetch data from the Flask server
+        response = requests.get("http://127.0.0.1:5000/data")
+        data = response.json()
+
+        if len(data) == 0:
+            return {}, {}, {}, [], "No data available. Please check the simulation.", {"backgroundColor": "orange"}
+
+        # Convert to DataFrame
+        df = pd.DataFrame(data)
+
+        # Plot 1: Average value per PMD Type
+        fig_value = px.bar(
+            df.groupby("pmd_type")["value"].mean().reset_index(),
+            x="pmd_type", y="value", color="pmd_type",
+            title="Average Value per PMD Type"
+        )
+
+        # Plot 2: Average voltage per PMD Type
+        fig_voltage = px.bar(
+            df.groupby("pmd_type")["ac_volt"].mean().reset_index(),
+            x="pmd_type", y="ac_volt", color="pmd_type",
+            title="Average Voltage per PMD Type"
+        )
+
+        # Plot 3: Average current per PMD Type
+        fig_current = px.bar(
+            df.groupby("pmd_type")["ac_curr"].mean().reset_index(),
+            x="pmd_type", y="ac_curr", color="pmd_type",
+            title="Average Current per PMD Type"
+        )
+
+        # Update logs table with the latest data
+        table_data = df.tail(10).to_dict("records")  # Show the 10 most recent rows
+
+        # Update live status
+        live_status = f"Simulation running: {len(df)} records received."
+
+        # Status indicator: green for running
+        status_style = {"backgroundColor": "green"}
+
+        return fig_value, fig_voltage, fig_current, table_data, live_status, status_style
+
+    except Exception as e:
+        print("Error fetching or processing data:", e)
+        # Status indicator: red for error
+        return {}, {}, {}, [], "Error fetching data from the simulation server.", {"backgroundColor": "red"}
+
+if __name__ == '__main__':
+    app.run_server(debug=True, port=8050)
+
