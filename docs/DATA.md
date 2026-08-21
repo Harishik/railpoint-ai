@@ -42,6 +42,38 @@ corroborates the maintenance codes**:
   at 0). That is precisely a latch that never engages: the motor keeps driving
   because the throw never completes.
 
+### The indication lines are a three-state signal
+
+Worth stating separately, because getting it wrong cost a first attempt at the
+simulator. `output_n_volt` is **not** a continuous position ramp. The indication
+circuit is energised only while the switch is *locked and detected* in a
+position:
+
+| Value | Meaning |
+|---|---|
+| **+23 V** | locked at Normal (정위) |
+| **~0 V** | **in transit** — neither position detected |
+| **−23 V** | locked at Reverse (반위) |
+
+In PMD014#2593, **78.8% of samples sit in [−2, +2] V** — the line is at 0 for the
+whole throw, with fast edges at each end. Two of the fault exemplars fall
+straight out of this reading:
+
+- **PMD055 reads ~0 V for all 600 samples** — permanently in transit, never
+  locking. That *is* the E01 locking-latch diagnosis, visible directly in the
+  channel.
+- **PMD014#2594 holds −23.9 V throughout** — never unlocked at all, because the
+  motor never started.
+
+`as_volt` is the complementary signal: the **drive command**, 0 V at idle and
+±23 V while driving. Whether it returns to 0 is diagnostic on its own — PMD014#2594's
+returns (drive cut on timeout) while PMD055's does not (drive never cut).
+
+The first simulator modelled this as a linear ramp and the calibration gate
+rejected it at a normalised Wasserstein distance of 0.194 against a 0.10
+tolerance. The three-state model scores **0.013**, a 15× improvement. That is the
+gate earning its place.
+
 ### Why this cannot train a model
 
 **All 7 events carry a fault code. There are zero normal events.** A supervised

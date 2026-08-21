@@ -1,0 +1,105 @@
+"""Dataset assembly: splits, coverage and label integrity."""
+
+import numpy as np
+import pytest
+
+from pmdlib.sim.fleet import (
+    DatasetConfig,
+    StratifiedConfig,
+    generate_dataset,
+    generate_stratified,
+)
+from pmdlib.sim.spec import CHANNELS, FaultClass
+
+
+@pytest.fixture(scope="module")
+def fleet():
+    return generate_dataset(DatasetConfig(n_machines=14, cycles_per_machine=50, seed=11))
+
+
+@pytest.fixture(scope="module")
+def stratified():
+    return generate_stratified(StratifiedConfig(n_machines=20, replicates=1, seed=11))
+
+
+def _assert_no_machine_leakage(meta):
+    """Splitting on events rather than machines leaks near-duplicate throws into
+    the test set and inflates every metric. Guard it explicitly."""
+    groups = {s: set(g.machine_id) for s, g in meta.groupby("split")}
+    for a in groups:
+        for b in groups:
+            if a != b:
+                assert not groups[a] & groups[b], f"machines shared between {a} and {b}"
+
+
+def test_fleet_has_no_machine_leakage(fleet):
+    _assert_no_machine_leakage(fleet[2])
+
+
+def test_stratified_has_no_machine_leakage(stratified):
+    _assert_no_machine_leakage(stratified[2])
+
+
+def test_shapes_are_consistent(fleet):
+    X, lengths, meta = fleet
+    assert X.shape[0] == len(lengths) == len(meta)
+    assert X.shape[2] == len(CHANNELS)
+    assert (lengths > 0).all() and (lengths <= X.shape[1]).all()
+
+
+def test_padding_is_nan_beyond_true_length(fleet):
+    X, lengths, _ = fleet
+    for i in (0, len(lengths) // 2, len(lengths) - 1):
+        n = int(lengths[i])
+        if n < X.shape[1]:
+            assert np.isnan(X[i, n:, 0]).all(), "padding must be NaN, not zeros"
+        assert not np.isnan(X[i, :n, 0]).all(), "real samples must not all be NaN"
+
+
+def test_stratified_is_balanced_across_classes(stratified):
+    counts = stratified[2].fault.value_counts()
+    assert len(counts) == len(list(FaultClass)), "every class must appear"
+    assert counts.max() == counts.min(), "the sweep must be exactly balanced"
+
+
+def test_stratified_covers_every_scenario_axis(stratified):
+    meta = stratified[2]
+    assert set(meta.regime) == {"summer", "mild", "winter", "icy"}
+    assert set(meta.dq_mode) == {"clean", "field"}
+    assert set(meta.direction) == {"N", "R"}
+    assert meta[meta.fault != "NORMAL"].severity.nunique() >= 5
+
+
+def test_fleet_labels_are_internally_consistent(fleet):
+    meta = fleet[2]
+    assert (meta.is_anomaly == (meta.fault != "NORMAL")).all()
+    normal = meta[meta.fault == "NORMAL"]
+    assert (normal.severity == 0).all(), "NORMAL events carry no severity"
+    assert (normal.err_code == "").all()
+
+
+def test_fleet_prevalence_is_realistic(fleet):
+    """A fleet where most machines are dying teaches the wrong prior. The
+    stratified sweep is where balance belongs, not here."""
+    assert 0.10 < fleet[2].is_anomaly.mean() < 0.60
+
+
+def test_critical_faults_block_once_advanced(fleet):
+    """Severity-aware: a mild critical fault still lets the machine throw, and
+    only blocks once it has progressed. See spec.blocks_at."""
+    from pmdlib.sim.spec import BLOCKING_SEVERITY, CRITICAL_FAULTS
+
+    meta = fleet[2]
+    advanced = meta[
+        meta.fault.isin({f.value for f in CRITICAL_FAULTS})
+        & (meta.severity >= BLOCKING_SEVERITY)
+    ]
+    assert len(advanced), "fixture should contain at least one advanced critical fault"
+    assert not advanced.completed.any()
+
+
+def test_generation_is_reproducible():
+    a = generate_dataset(DatasetConfig(n_machines=4, cycles_per_machine=20, seed=3))
+    b = generate_dataset(DatasetConfig(n_machines=4, cycles_per_machine=20, seed=3))
+    np.testing.assert_array_equal(np.nan_to_num(a[0]), np.nan_to_num(b[0]))
+    assert a[2].equals(b[2])
