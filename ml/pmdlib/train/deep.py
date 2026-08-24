@@ -12,6 +12,7 @@ disagree about which machines are held out.
 
 from __future__ import annotations
 
+import gc
 import time
 from dataclasses import dataclass, field
 
@@ -66,9 +67,24 @@ def _concat(parts: list[tuple[Tensor, ...]]) -> TensorDataset:
     return TensorDataset(*[torch.cat([p[i] for p in parts]) for i in range(5)])
 
 
-def build_datasets(split: str) -> TensorDataset:
-    parts = [_to_tensors(load(name).split(split)) for name in ("stratified", "fleet")]
-    return _concat(parts)
+def build_datasets(*splits: str) -> tuple[TensorDataset, ...]:
+    """Build several splits from a single pass over the data.
+
+    Loading per split re-read and re-decompressed the full npz each time, which
+    materialised well over a gigabyte of raw signals per call and was enough to
+    get the training process killed. Loaded once, sliced per split, and the raw
+    arrays are dropped as soon as they are tensors.
+    """
+    out: list[TensorDataset] = []
+    for split in splits:
+        parts = [
+            _to_tensors(load(name, with_features=False).split(split))
+            for name in ("stratified", "fleet")
+        ]
+        out.append(_concat(parts))
+        del parts
+        gc.collect()
+    return tuple(out)
 
 
 def rul_target(rul: Tensor) -> Tensor:
@@ -85,8 +101,7 @@ def train(cfg: TrainConfig | None = None, verbose: bool = True) -> tuple[PointMa
     # torch owns all sampling in this loop (shuffling, dropout, init); numpy is
     # only used for metrics here, so its global seed is deliberately not set.
 
-    train_ds = build_datasets("train")
-    val_ds = build_datasets("val")
+    train_ds, val_ds = build_datasets("train", "val")
 
     y_train = train_ds.tensors[3].numpy()
     counts = np.bincount(y_train, minlength=cfg.net.n_classes).astype(np.float64)

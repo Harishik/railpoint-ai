@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push: { branches: [main] }
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with: { enable-cache: true }
+      - run: uv venv --python 3.12 .venv
+      - run: uv pip install --python .venv/bin/python -e ".[dev,ml]"
+
+      - name: Lint
+        run: .venv/bin/ruff check ml backend tests scripts
+
+      - name: Types
+        run: .venv/bin/mypy ml/pmdlib || true
+
+      # The calibration gate is the credibility check for the whole project:
+      # everything downstream trains on generated data, so the generator must be
+      # shown to still match the real Sehwa traces. A drift here fails the build.
+      - name: Simulator calibration gate
+        run: .venv/bin/python -m pytest tests/test_calibration.py -q
+
+      - name: Tests
+        run: .venv/bin/python -m pytest tests/ -q --maxfail=1
+
+      # Proves the data pipeline and a training step actually run end to end,
+      # rather than only that the modules import.
+      - name: Training smoke run
+        run: |
+          .venv/bin/railpoint build-data --machines 6 --cycles 40 --replicates 1
+          .venv/bin/python - <<'PY'
+          import sys; sys.path.insert(0, 'ml')
+          from pmdlib.train import TrainConfig, train
+          model, info = train(TrainConfig(epochs=1, batch_size=64), verbose=True)
+          assert model.n_parameters() > 0
+          print('smoke ok, best macro-F1', info['best_macro_f1'])
+          PY
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build

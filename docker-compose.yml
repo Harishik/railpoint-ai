@@ -1,0 +1,25 @@
+services:
+  api:
+    build: { context: ., dockerfile: Dockerfile }
+    ports: ["8000:8000"]
+    environment:
+      RAILPOINT_CORS_ORIGINS: '["http://localhost:5173","http://localhost:8000"]'
+    volumes:
+      - ./experiments/artifacts:/app/experiments/artifacts:ro
+      - ./data/synthetic:/app/data/synthetic
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  web:
+    image: node:22-slim
+    working_dir: /app/frontend
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    ports: ["5173:5173"]
+    volumes: ["./frontend:/app/frontend"]
+    environment:
+      VITE_API_TARGET: http://api:8000
+    depends_on:
+      api: { condition: service_healthy }

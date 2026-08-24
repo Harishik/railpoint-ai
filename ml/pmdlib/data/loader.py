@@ -69,13 +69,25 @@ class Dataset:
         return len(self.meta)
 
 
-def load(name: str = "stratified", *, with_features: bool = True, synth_dir: Path | None = None) -> Dataset:
+_CACHE: dict[tuple[str, bool, str], Dataset] = {}
+
+
+def load(
+    name: str = "stratified",
+    *,
+    with_features: bool = True,
+    synth_dir: Path | None = None,
+    cache: bool = True,
+) -> Dataset:
     """Load ``fleet`` or ``stratified``.
 
     Features are cached to ``data/processed/`` keyed by name, because extracting
     104 features over 25k events takes long enough to be annoying in a loop.
     """
     synth_dir = synth_dir or SYNTH_DIR
+    key = (name, with_features, str(synth_dir))
+    if cache and key in _CACHE:
+        return _CACHE[key]
     payload = np.load(synth_dir / f"{name}_signals.npz")
     meta = pd.read_parquet(synth_dir / f"{name}_meta.parquet")
     # Override the per-dataset split with the global, id-derived one so that
@@ -86,14 +98,16 @@ def load(name: str = "stratified", *, with_features: bool = True, synth_dir: Pat
 
     if with_features:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        cache = CACHE_DIR / f"{name}_features.npy"
-        if cache.exists():
-            cached = np.load(cache)
+        cache_path = CACHE_DIR / f"{name}_features.npy"
+        if cache_path.exists():
+            cached = np.load(cache_path)
             if cached.shape == (len(ds), len(FEATURE_NAMES)):
                 ds.features = cached
         if ds.features is None:
             ds.features = extract_batch(ds.signals, ds.lengths)
-            np.save(cache, ds.features)
+            np.save(cache_path, ds.features)
+    if cache:
+        _CACHE[key] = ds
     return ds
 
 
