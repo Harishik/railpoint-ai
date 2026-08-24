@@ -64,7 +64,20 @@ export function Schematic({ machines, selected, onSelect, recent }: Props) {
             )}
             <circle r="4.2" fill="var(--color-surface-1)" stroke={colour} strokeWidth="1.5"
               style={{ transition: 'stroke 220ms var(--ease-out-quint)' }} />
-            <circle r="1.9" fill={colour} style={{ transition: 'fill 220ms var(--ease-out-quint)' }} />
+            {/* State is carried by shape as well as hue: a bar lying along the
+                track for Normal, across it for Reverse, a hollow ring while in
+                transit. Colour alone would be unreadable to a colour-blind
+                operator, and this is a safety surface. */}
+            {m.position === 'transit' ? (
+              <circle r="1.9" fill="none" stroke={colour} strokeWidth="0.7" />
+            ) : (
+              <rect
+                x={m.position === 'R' ? -0.55 : -2.1} y={m.position === 'R' ? -2.1 : -0.55}
+                width={m.position === 'R' ? 1.1 : 4.2} height={m.position === 'R' ? 4.2 : 1.1}
+                rx="0.4" fill={colour}
+                style={{ transition: 'fill 220ms var(--ease-out-quint)' }}
+              />
+            )}
             <text y="11.5" textAnchor="middle" fontSize="3.6" fill="var(--color-ink-dim)" className="num">
               {m.id.replace('PMD', '')}
             </text>

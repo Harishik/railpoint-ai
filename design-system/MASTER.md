@@ -177,3 +177,25 @@ Everything not on this list is static by default.
 - `prefers-reduced-motion` honoured everywhere.
 - Loading >300ms shows a skeleton that reserves final dimensions (CLS < 0.1).
 - Tested at 1440 / 1024 / 768, and with the OS at largest text size.
+
+---
+
+## Appendix — measured contrast
+
+Verified in the running app by rasterising each token through a canvas and
+computing WCAG relative luminance (parsing the `oklch()` strings directly, as a
+first attempt did, silently produces nonsense). Both themes measured
+independently, never inferred from one another.
+
+| Token vs `surface-1` | Dark | Light | Floor |
+|---|---|---|---|
+| `ink` | 16.07 | 17.35 | 4.5 |
+| `ink-dim` | 7.86 | 7.79 | 4.5 |
+| `ink-faint` | **5.24** | **5.48** | 4.5 |
+| `normal` | 8.33 | — | 3.0 |
+| `reverse` | 9.46 | — | 3.0 |
+| `fault` | 5.28 | — | 3.0 |
+
+`ink-faint` originally measured **4.22 and failed**. It carries labels and
+metadata throughout the interface, so the token was lightened rather than the
+requirement waived.

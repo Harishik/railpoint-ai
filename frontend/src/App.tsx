@@ -76,14 +76,45 @@ export function App() {
     }, [],
   )
 
+  // Arrow-key traversal across the fleet. A control-room console has to be
+  // operable without a mouse, and the schematic is the primary surface.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!machines.length) return
+      const target = e.target as HTMLElement | null
+      if (target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) return
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      e.preventDefault()
+      const ids = machines.map((m) => m.id)
+      const at = selectedMachine ? ids.indexOf(selectedMachine) : -1
+      const step = e.key === 'ArrowRight' ? 1 : -1
+      setSelectedMachine(ids[(at + step + ids.length) % ids.length])
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [machines, selectedMachine])
+
   const selected = machines.find((m) => m.id === selectedMachine) ?? null
   const pred = detail?.prediction
+  const openAlerts = alerts.filter((a) => a.state === 'open')
+  const latestAlert = openAlerts[0]
 
   return (
     <div className="flex h-full flex-col bg-bg text-ink">
+      <a
+        href="#console"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[1000] focus:rounded focus:bg-surface-3 focus:px-3 focus:py-1.5"
+      >
+        Skip to console
+      </a>
+      {/* Announced politely so a screen-reader user hears new alarms without
+          losing their place. aria-live, never focus theft. */}
+      <p aria-live="polite" className="sr-only">
+        {latestAlert ? `${latestAlert.severity} alert: ${latestAlert.message}` : ''}
+      </p>
       <StatusBar stats={stats} connected={connected} theme={theme} onTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} />
 
-      <main className="grid flex-1 gap-3 overflow-auto p-3 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+      <main id="console" className="grid flex-1 gap-3 overflow-auto p-3 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
         <div className="flex flex-col gap-3">
           <Card
             title="Interlocking schematic"
@@ -93,7 +124,7 @@ export function App() {
                   clear filter · {selected.id}
                 </button>
               ) : (
-                <span className="text-[11px] text-ink-faint">select a machine to filter</span>
+                <span className="text-[11px] text-ink-faint">click a machine, or use ← →</span>
               )
             }
           >
@@ -158,7 +189,7 @@ export function App() {
 
         <aside className="flex flex-col gap-3">
           <Card title="Alerts" scroll className="max-h-[38vh]"
-            aside={<span className="num text-[11px] text-ink-faint">{alerts.filter((a) => a.state === 'open').length} open</span>}>
+            aside={<span className="num text-[11px] text-ink-faint">{openAlerts.length} open</span>}>
             <AlertList alerts={alerts.slice(0, 24)} onAction={onAlertAction} />
           </Card>
 
