@@ -21,6 +21,11 @@ from .spec import DEGRADING_FAULTS, FaultClass
 
 #: Health below this counts as failed; the machine is withdrawn for maintenance.
 FAILURE_THRESHOLD = 0.25
+#: Health below which degradation becomes visible in the signal. Set so that a
+#: generated fleet shows anomalies on roughly 10-20% of throws. Real railway
+#: fleets fail rarely; a dataset where 50% of throws are abnormal teaches the
+#: wrong prior and makes anomaly detection artificially easy.
+SYMPTOM_THRESHOLD = 0.62
 #: Health restored by a maintenance intervention (never quite as-new).
 POST_MAINTENANCE_HEALTH = 0.96
 
@@ -40,13 +45,13 @@ class TrajectoryKind(StrEnum):
 #: Relative prevalence in a generated fleet. Most machines are fine most of the
 #: time; a dataset where half the fleet is dying teaches the wrong prior.
 TRAJECTORY_WEIGHTS: dict[TrajectoryKind, float] = {
-    TrajectoryKind.STABLE: 0.30,
-    TrajectoryKind.GRADUAL: 0.26,
-    TrajectoryKind.ACCELERATING: 0.12,
-    TrajectoryKind.SHOCK: 0.10,
-    TrajectoryKind.INTERMITTENT: 0.12,
+    TrajectoryKind.STABLE: 0.44,
+    TrajectoryKind.GRADUAL: 0.20,
+    TrajectoryKind.ACCELERATING: 0.09,
+    TrajectoryKind.SHOCK: 0.08,
+    TrajectoryKind.INTERMITTENT: 0.10,
     TrajectoryKind.SEASONAL: 0.06,
-    TrajectoryKind.INFANT_MORTALITY: 0.04,
+    TrajectoryKind.INFANT_MORTALITY: 0.03,
 }
 
 
@@ -65,6 +70,41 @@ class Trajectory:
 
     def __len__(self) -> int:
         return int(self.health.size)
+
+
+#: Median cycles-to-failure for a machine on a normal wear trajectory. Wear is
+#: expressed per *cycle*, not per simulation window - an earlier version scaled
+#: the rate by n_cycles, which meant a machine's lifetime silently depended on
+#: how long you chose to simulate.
+MEDIAN_LIFETIME_CYCLES = 900.0
+#: Log-normal spread of lifetime across the fleet. Real fleets are wide: some
+#: units run for years, others fail early.
+LIFETIME_LOG_SIGMA = 0.75
+
+#: Per-trajectory lifetime multipliers.
+LIFETIME_SCALE: dict[str, float] = {
+    "STABLE": 8.0,
+    "GRADUAL": 1.0,
+    "ACCELERATING": 1.3,
+    "SHOCK": 3.0,
+    "INTERMITTENT": 1.6,
+    "SEASONAL": 1.2,
+    "INFANT_MORTALITY": 0.22,
+}
+
+
+def _wear_rate(kind: TrajectoryKind, rng: np.random.Generator) -> float:
+    """Damage accumulated per cycle for one machine.
+
+    Failure is health < FAILURE_THRESHOLD, i.e. cumulative damage of
+    ``1 - FAILURE_THRESHOLD``, so the rate is that divided by this unit's
+    lifetime.
+    """
+    lifetime = float(
+        rng.lognormal(np.log(MEDIAN_LIFETIME_CYCLES), LIFETIME_LOG_SIGMA)
+        * LIFETIME_SCALE[kind.value]
+    )
+    return (1.0 - FAILURE_THRESHOLD) / max(lifetime, 1.0)
 
 
 def _gamma_wear(n: int, rate: float, shape: float, rng: np.random.Generator) -> np.ndarray:
@@ -98,32 +138,24 @@ def simulate_trajectory(
     if mode is None:
         mode = DEGRADING_FAULTS[int(rng.integers(len(DEGRADING_FAULTS)))]
 
-    # Base wear rate, tuned so a GRADUAL machine typically reaches the failure
-    # threshold somewhere inside its simulated life rather than at cycle 3.
-    base_rate = 0.75 / max(n_cycles, 1)
+    rate = _wear_rate(kind, rng)
     shape = 2.0
 
-    if kind is TrajectoryKind.STABLE:
-        damage = _gamma_wear(n_cycles, base_rate * 0.18, shape, rng)
-    elif kind is TrajectoryKind.GRADUAL:
-        damage = _gamma_wear(n_cycles, base_rate * rng.uniform(0.9, 1.6), shape, rng)
-    elif kind is TrajectoryKind.ACCELERATING:
-        ramp = np.linspace(0.35, 2.6, n_cycles)
-        damage = np.cumsum(rng.gamma(shape, base_rate / shape, n_cycles) * ramp)
+    if kind is TrajectoryKind.ACCELERATING:
+        # Damage compounds: the wear rate itself climbs over the machine's life.
+        ramp = np.linspace(0.3, 2.4, n_cycles)
+        damage = np.cumsum(rng.gamma(shape, rate / shape, n_cycles) * ramp)
     elif kind is TrajectoryKind.SEASONAL:
         season = _seasonal_multiplier(n_cycles, cycles_per_year, rng)
-        damage = np.cumsum(rng.gamma(shape, base_rate / shape, n_cycles) * season)
+        damage = np.cumsum(rng.gamma(shape, rate / shape, n_cycles) * season)
     elif kind is TrajectoryKind.SHOCK:
-        damage = _gamma_wear(n_cycles, base_rate * 0.3, shape, rng)
+        # Mostly fine, punctuated by discrete damage events.
+        damage = _gamma_wear(n_cycles, rate * 0.35, shape, rng)
         for _ in range(int(rng.integers(1, 4))):
-            at = int(rng.integers(n_cycles // 10, n_cycles))
-            damage[at:] += rng.uniform(0.25, 0.6)
-    elif kind is TrajectoryKind.INTERMITTENT:
-        damage = _gamma_wear(n_cycles, base_rate * 0.7, shape, rng)
-    elif kind is TrajectoryKind.INFANT_MORTALITY:
-        damage = _gamma_wear(n_cycles, base_rate * 4.5, shape, rng)
-    else:  # pragma: no cover
-        raise ValueError(kind)
+            at = int(rng.integers(max(1, n_cycles // 10), n_cycles))
+            damage[at:] += rng.uniform(0.20, 0.55)
+    else:
+        damage = _gamma_wear(n_cycles, rate, shape, rng)
 
     health = np.clip(1.0 - damage, 0.0, 1.0)
 
@@ -166,10 +198,10 @@ def simulate_trajectory(
     # --- when does the fault actually show in the signal? -------------------
     # Severity ramps as health falls: nothing visible while healthy, unmistakable
     # near failure. INTERMITTENT machines flicker before settling.
-    active = health < 0.85
+    active = health < SYMPTOM_THRESHOLD
     if kind is TrajectoryKind.INTERMITTENT:
-        flicker = rng.random(n_cycles) < np.clip((0.85 - health) * 1.4, 0.0, 1.0)
-        persistent = health < 0.45
+        flicker = rng.random(n_cycles) < np.clip((SYMPTOM_THRESHOLD - health) * 1.8, 0.0, 1.0)
+        persistent = health < 0.40
         active = (active & flicker) | persistent
 
     return Trajectory(
@@ -187,8 +219,10 @@ def simulate_trajectory(
 def severity_from_health(health: float) -> float:
     """Map health onto fault severity in [0, 1].
 
-    Nothing below 0.85 health, ramping to full severity at the failure threshold.
+    Nothing above SYMPTOM_THRESHOLD, ramping to full severity at failure.
     """
-    if health >= 0.85:
+    if health >= SYMPTOM_THRESHOLD:
         return 0.0
-    return float(np.clip((0.85 - health) / (0.85 - FAILURE_THRESHOLD), 0.0, 1.0))
+    return float(
+        np.clip((SYMPTOM_THRESHOLD - health) / (SYMPTOM_THRESHOLD - FAILURE_THRESHOLD), 0.0, 1.0)
+    )

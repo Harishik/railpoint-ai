@@ -29,8 +29,8 @@ def calibrate(n: int = 200, seed: int = 0) -> None:
 
 @app.command("build-data")
 def build_data(
-    machines: int = 48,
-    cycles: int = 320,
+    machines: int = 64,
+    cycles: int = 800,
     replicates: int = 8,
     seed: int = 42,
     out: Path = SYNTH_DIR,

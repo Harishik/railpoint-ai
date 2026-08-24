@@ -49,9 +49,34 @@ def test_failed_flag_matches_threshold(rng):
 
 
 def test_infant_mortality_fails_sooner_than_stable(rng):
-    early = simulate_trajectory(600, kind=TrajectoryKind.INFANT_MORTALITY, rng=rng)
-    stable = simulate_trajectory(600, kind=TrajectoryKind.STABLE, rng=rng)
-    assert early.health.min() < stable.health.min()
+    """Compared over several draws: lifetime is log-normal per machine, so a
+    single pair can invert by chance even though the populations differ."""
+    early = np.mean([
+        simulate_trajectory(600, kind=TrajectoryKind.INFANT_MORTALITY, rng=rng).health.min()
+        for _ in range(15)
+    ])
+    stable = np.mean([
+        simulate_trajectory(600, kind=TrajectoryKind.STABLE, rng=rng).health.min()
+        for _ in range(15)
+    ])
+    assert early < stable
+
+
+def test_wear_rate_is_independent_of_window_length(rng):
+    """Damage per cycle must not depend on how long we choose to simulate.
+
+    An earlier version scaled the rate by n_cycles, which meant a machine's
+    lifetime silently changed with the simulation window.
+    """
+    short = np.mean([
+        simulate_trajectory(200, kind=TrajectoryKind.GRADUAL, rng=rng, allow_maintenance=False)
+        .health[199] for _ in range(40)
+    ])
+    long_ = np.mean([
+        simulate_trajectory(800, kind=TrajectoryKind.GRADUAL, rng=rng, allow_maintenance=False)
+        .health[199] for _ in range(40)
+    ])
+    assert abs(short - long_) < 0.06, "health at cycle 200 must not depend on total length"
 
 
 def test_severity_ramp_is_monotonic_and_bounded():

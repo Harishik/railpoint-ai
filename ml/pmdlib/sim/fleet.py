@@ -40,8 +40,10 @@ SHOCK_FAULTS: tuple[FaultClass, ...] = tuple(
 
 @dataclass
 class DatasetConfig:
-    n_machines: int = 48
-    cycles_per_machine: int = 320
+    n_machines: int = 64
+    #: Long enough that a useful fraction of the fleet runs to failure and RUL
+    #: is learnable, while per-throw anomaly prevalence stays realistic (~16%).
+    cycles_per_machine: int = 800
     class_b_frac: float = 0.30
     unit_spread: float = 0.06
     #: Per-event probability of a sudden-onset fault, independent of health.

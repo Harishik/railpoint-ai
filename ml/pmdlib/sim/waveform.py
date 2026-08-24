@@ -58,6 +58,23 @@ class Event:
         return int(self.signals.shape[0])
 
 
+def _ar1_noise(n: int, sigma: float, phi: float, rng: np.random.Generator) -> np.ndarray:
+    """Band-limited ripple as an AR(1) process with stationary std ``sigma``.
+
+    Real plateau ripple has lag-1 autocorrelation around 0.93 - it is mechanical
+    torque variation, not white sensor noise. Generating it white made the
+    synthetic power spectrum far flatter than the real one.
+    """
+    if n <= 0 or sigma <= 0:
+        return np.zeros(max(n, 0))
+    innovation = rng.normal(0.0, sigma * np.sqrt(1.0 - phi * phi), n)
+    out = np.empty(n)
+    out[0] = rng.normal(0.0, sigma)
+    for i in range(1, n):
+        out[i] = phi * out[i - 1] + innovation[i]
+    return out
+
+
 def _resample(template: np.ndarray, n: int) -> np.ndarray:
     return np.interp(np.linspace(0.0, 1.0, n), np.linspace(0.0, 1.0, template.size), template)
 
@@ -87,7 +104,7 @@ def _build_current(
         phase = 2.0 * np.pi * np.arange(throw_len) / eff.harmonic_period
         body = body + eff.harmonic_a * np.sin(phase + rng.uniform(0, 2 * np.pi))
 
-    body = body + rng.normal(0.0, spec.plateau_ripple_a * eff.ripple_scale, throw_len)
+    body = body + _ar1_noise(throw_len, spec.plateau_ripple_a * eff.ripple_scale, spec.ripple_ar1, rng)
 
     if eff.stall_a is not None:
         body = np.minimum(body, eff.stall_a)
@@ -132,13 +149,18 @@ def _build_indication(
       the motor never started.
     """
     v = spec.indication_v
-    start_v = v if direction == "R" else -v
-    end_v = -v if direction == "R" else v
+    # Asymmetric rails, measured: the negative rail sits further from zero.
+    pos_v = v - spec.rail_asymmetry_v / 2.0
+    neg_v = -(v + spec.rail_asymmetry_v / 2.0)
+    start_v = pos_v if direction == "R" else neg_v
+    end_v = neg_v if direction == "R" else pos_v
     edge = max(2, spec.indication_transition_samples)
 
-    out_n = np.full(n_total, start_v, dtype=float)
+    # A machine left mid-stroke by an earlier failed throw is already out of
+    # position when this capture starts, so there is no locked rail to leave.
+    out_n = np.full(n_total, 0.0 if eff.starts_unlocked else start_v, dtype=float)
 
-    if eff.motor_starts:
+    if eff.motor_starts and not eff.starts_unlocked:
         delay = eff.indication_delay
         unlock_at = min(t0 + delay, n_total)
         lock_at = min(t1 + delay, n_total)
@@ -174,7 +196,7 @@ def _build_indication(
     out_n = out_n * (1.0 - eff.indication_leak)
     out_n = out_n + rng.normal(0.0, spec.indication_noise_v * eff.indication_noise_scale, n_total)
     # Physical rail limit, with a small allowance for inductive overshoot.
-    out_n = np.clip(out_n, -v * RAIL_OVERSHOOT, v * RAIL_OVERSHOOT)
+    out_n = np.clip(out_n, neg_v * RAIL_OVERSHOOT, pos_v * RAIL_OVERSHOOT)
 
     # The complementary circuit: energised at the opposite position, and also 0
     # in transit. Consistent with PMD055, where both lines read ~0 throughout.
@@ -222,9 +244,12 @@ def _apply_data_quality(
             applied.append("missing_channel")
 
     if dq.quantisation_a:
-        # The real extract is quantised to 0.01 A / 0.01 V.
+        # The real extract is quantised to 0.01 across every channel. On the
+        # indication lines this matters more than it looks: near 0 V the
+        # quantisation, not the noise, sets how often the signal changes sign,
+        # which is exactly what the chatter features measure.
         signals[:, 0] = np.round(signals[:, 0] / dq.quantisation_a) * dq.quantisation_a
-        signals[:, 1] = np.round(signals[:, 1], 2)
+        signals[:, 1:] = np.round(signals[:, 1:], 2)
 
     return signals, applied
 
@@ -267,9 +292,15 @@ def generate_event(
     n_pre = int(rng.integers(*spec.pre_samples))
     n_post = int(rng.integers(*spec.post_samples))
     delay = eff.start_delay_samples
-    t0 = n_pre + delay
+    # The drive contactor closes before the motor draws current, and is held
+    # after current stops until indication confirms. Both measured from the real
+    # traces; the hold is what makes as_volt outlast the current plateau.
+    lead = int(rng.integers(*spec.contactor_lead_samples))
+    hold = int(rng.integers(*spec.drive_hold_samples))
+    drive_on = n_pre
+    t0 = n_pre + lead + delay
     t1 = t0 + throw_len
-    n_total = t1 + n_post
+    n_total = t1 + hold + n_post
 
     truncated = n_total > spec.capture_cap
     if truncated:
@@ -284,7 +315,9 @@ def generate_event(
     if eff.motor_starts and t1 > t0:
         body = _build_current(spec, eff, plateau_a, inrush_scale, t1 - t0, rng)
         current[t0:t1] = body
-    current += np.abs(rng.normal(0.0, spec.idle_a * 0.12, n_total))
+    # Quiescent current noise is symmetric about the idle level, not a
+    # one-sided floor; clipped at zero because current cannot reverse here.
+    current = np.clip(current + rng.normal(0.0, spec.idle_noise_a, n_total), 0.0, None)
 
     # --- supply -----------------------------------------------------------
     supply = np.full(n_total, spec.supply_v + eff.supply_offset_v, dtype=float)
@@ -301,8 +334,17 @@ def generate_event(
     # which is the signature that separates E01 from E03.
     drive_sign = 1.0 if direction == "N" else -1.0
     as_volt = np.zeros(n_total, dtype=float)
-    drive_end = n_total if not eff.drive_cut else min(t1, n_total)
-    as_volt[n_pre:drive_end] = drive_sign * spec.indication_v
+    drive_end = n_total if not eff.drive_cut else min(t1 + hold, n_total)
+    as_volt[drive_on:drive_end] = drive_sign * spec.indication_v
+    # Changeover transient: the outgoing polarity briefly persists as the
+    # contactor switches, so as_volt overshoots the *opposite* way for a few
+    # samples. Measured at ~11 samples peaking ~14.5 V, and it is why a real
+    # capture's as_volt peak-to-peak is ~42 V rather than ~23 V.
+    n_trans = int(rng.integers(*spec.drive_transient_samples))
+    trans_end = min(drive_on + n_trans, n_total)
+    if trans_end > drive_on:
+        amp = rng.uniform(0.3, 1.0) * spec.drive_transient_v
+        as_volt[drive_on:trans_end] = -drive_sign * amp
     as_volt += rng.normal(0.0, spec.indication_noise_v * eff.indication_noise_scale, n_total)
     as_volt = np.clip(as_volt, -spec.indication_v * RAIL_OVERSHOOT, spec.indication_v * RAIL_OVERSHOOT)
 

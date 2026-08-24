@@ -1,0 +1,111 @@
+"""Load the generated datasets, with a cache for the expensive feature pass."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from ..features import FEATURE_NAMES, extract_batch
+from ..sim.spec import FaultClass
+
+ROOT = Path(__file__).resolve().parents[3]
+SYNTH_DIR = ROOT / "data" / "synthetic"
+CACHE_DIR = ROOT / "data" / "processed"
+
+#: Fixed label order, so a model trained today lines up with one trained later.
+CLASS_ORDER: tuple[str, ...] = tuple(f.value for f in FaultClass)
+CLASS_TO_IDX = {c: i for i, c in enumerate(CLASS_ORDER)}
+
+
+@dataclass
+class Dataset:
+    signals: np.ndarray          # (n, max_samples, 5) NaN-padded
+    lengths: np.ndarray          # (n,)
+    meta: pd.DataFrame
+    features: np.ndarray | None = None
+
+    @property
+    def y(self) -> np.ndarray:
+        return self.meta.fault.map(CLASS_TO_IDX).to_numpy(np.int64)
+
+    @property
+    def y_binary(self) -> np.ndarray:
+        return self.meta.is_anomaly.to_numpy(bool).astype(np.int64)
+
+    def split(self, name: str) -> Dataset:
+        mask = (self.meta.split == name).to_numpy()
+        idx = np.flatnonzero(mask)
+        return Dataset(
+            signals=self.signals[idx],
+            lengths=self.lengths[idx],
+            meta=self.meta.iloc[idx].reset_index(drop=True),
+            features=None if self.features is None else self.features[idx],
+        )
+
+    def __len__(self) -> int:
+        return len(self.meta)
+
+
+def load(name: str = "stratified", *, with_features: bool = True, synth_dir: Path | None = None) -> Dataset:
+    """Load ``fleet`` or ``stratified``.
+
+    Features are cached to ``data/processed/`` keyed by name, because extracting
+    104 features over 25k events takes long enough to be annoying in a loop.
+    """
+    synth_dir = synth_dir or SYNTH_DIR
+    payload = np.load(synth_dir / f"{name}_signals.npz")
+    meta = pd.read_parquet(synth_dir / f"{name}_meta.parquet")
+    ds = Dataset(payload["signals"], payload["lengths"], meta)
+
+    if with_features:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cache = CACHE_DIR / f"{name}_features.npy"
+        if cache.exists():
+            cached = np.load(cache)
+            if cached.shape == (len(ds), len(FEATURE_NAMES)):
+                ds.features = cached
+        if ds.features is None:
+            ds.features = extract_batch(ds.signals, ds.lengths)
+            np.save(cache, ds.features)
+    return ds
+
+
+def load_real(raw_csv: Path | None = None) -> Dataset:
+    """The 7 real Sehwa events, shaped like the synthetic data.
+
+    These are the acceptance test and are **never** trained on. Every one of them
+    is a genuine fault, which is what makes the test meaningful: a model that
+    calls them all normal has learned nothing transferable.
+    """
+    from ..sim.spec import CHANNELS
+
+    raw_csv = raw_csv or ROOT / "data" / "raw" / "sehwa" / "pmd_events.csv"
+    df = pd.read_csv(raw_csv)
+    df["key"] = df.pmd_type + "#" + df.event_num.astype(str)
+
+    keys = sorted(df.key.unique())
+    max_len = int(df.groupby("key").size().max())
+    signals = np.full((len(keys), max_len, len(CHANNELS)), np.nan, np.float32)
+    lengths = np.zeros(len(keys), np.int32)
+    rows = []
+    for i, key in enumerate(keys):
+        g = df[df.key == key].sort_values("event_seq")
+        n = len(g)
+        signals[i, :n] = g[list(CHANNELS)].to_numpy(np.float32)
+        lengths[i] = n
+        rows.append(
+            {
+                "idx": i, "key": key, "machine_id": g.pmd_type.iloc[0], "split": "real",
+                "direction": g.direction.iloc[0], "err_code": g.err_code.iloc[0],
+                # Real events carry a component code, not one of our fault-class
+                # names. The mapping is deliberately left to the evaluation step
+                # so it is explicit and auditable rather than silently assumed.
+                "fault": "UNKNOWN", "is_anomaly": True, "n_samples": n,
+            }
+        )
+    ds = Dataset(signals, lengths, pd.DataFrame(rows))
+    ds.features = extract_batch(ds.signals, ds.lengths)
+    return ds

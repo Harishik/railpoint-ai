@@ -52,6 +52,10 @@ class FaultEffect:
     #: Fraction by which the indication rails are pulled toward 0 V. Leakage
     #: degrades the rail; it cannot drive it past its own supply.
     indication_leak: float = 0.0
+    #: The machine was already out of position when the capture began, so the
+    #: indication never shows a locked rail at all. A latch that fails to engage
+    #: leaves the switch mid-stroke, and it is still there on the next throw.
+    starts_unlocked: bool = False
     indication_noise_scale: float = 1.0
 
 
@@ -78,6 +82,11 @@ def fault_effect(fault: FaultClass, severity: float, rng: np.random.Generator) -
         e.plateau_scale = _lerp(1.10, 1.75, s)
         e.indication_progress = _lerp(0.75, 0.05, s)
         e.ripple_scale = _lerp(1.1, 1.6, s)
+        # Both real PMD055 captures read ~0.35 V on output_n_volt for all 600
+        # samples - flat, never showing a locked rail even in the pre-roll. The
+        # switch was left mid-stroke by the previous failed throw and is still
+        # there. Once the latch is gone, the fault persists between events.
+        e.starts_unlocked = s > 0.5
 
     elif fault is FaultClass.OBSTRUCTION:
         # Distinguished from E01 by the *shape*: the motor works against a rising

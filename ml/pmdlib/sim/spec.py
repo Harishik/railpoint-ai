@@ -145,7 +145,11 @@ class MachineSpec:
     name: str = "PMD-A"
 
     # Current channel (A) - measured.
-    idle_a: float = 0.07
+    idle_a: float = 0.0747        # measured mean between throws
+    #: Measured spread of the idle current (0.050-0.090 A typical). Modelling
+    #: this as a one-sided floor made the synthetic minimum a constant, which is
+    #: not what a real quiescent current looks like.
+    idle_noise_a: float = 0.0095
     inrush_a: float = 9.14
     plateau_a: float = 3.83
     plateau_ripple_a: float = 0.10
@@ -153,8 +157,12 @@ class MachineSpec:
 
     # Timing, in samples.
     throw_samples: int = 205        # measured 205-206 across all four healthy throws
-    pre_samples: tuple[int, int] = (10, 30)
-    post_samples: tuple[int, int] = (20, 55)
+    #: Idle captured before the drive command. Real drive-on lands at sample
+    #: 9-10 in every healthy trace, so the pre-roll is short and consistent.
+    pre_samples: tuple[int, int] = (6, 14)
+    #: Idle captured after the drive is cut. Real captures end ~11 samples later;
+    #: the long tail is the drive *hold*, accounted for separately.
+    post_samples: tuple[int, int] = (5, 20)
     capture_cap: int = 600          # hardware buffer; PMD055 hits exactly this
 
     # Supply (V) - measured.
@@ -166,10 +174,34 @@ class MachineSpec:
     sag_exponent: float = 0.9
 
     # Indication lines (V) - measured; the real lines swing about +-23.5 V.
-    indication_v: float = 23.5
-    indication_noise_v: float = 0.15
+    #: Mean rail magnitude, measured at 23.43 V.
+    indication_v: float = 23.43
+    #: The real rails are not balanced: +22.95 V against -23.91 V, so the
+    #: negative rail sits ~0.96 V further from zero. Small, but it shifts every
+    #: indication min/max feature if ignored.
+    rail_asymmetry_v: float = 0.96
+    #: Measured from the real rails and the in-transit segment: values sit at
+    #: 0.05 / 0.02 / -0.02 and 22.90 / 22.93 / 22.96, so the noise floor is
+    #: ~0.03 V, not the 0.15 V first assumed.
+    indication_noise_v: float = 0.035
     #: Samples the indication takes to traverse from one polarity to the other.
     indication_transition_samples: int = 12
+
+    # --- drive-contactor timing, all measured from the real traces ----------
+    #: The drive energises before the motor draws current (measured 14.5 +- 7.8).
+    contactor_lead_samples: tuple[int, int] = (6, 24)
+    #: The drive is held after current stops, until indication confirms
+    #: (measured 22.8 +- 1.1 - notably consistent).
+    drive_hold_samples: tuple[int, int] = (21, 25)
+    #: Brief opposite-polarity switching transient as the contactor changes over
+    #: (measured ~11 samples peaking ~14.5 V).
+    drive_transient_samples: tuple[int, int] = (1, 20)
+    drive_transient_v: float = 14.5
+
+    #: Plateau ripple is mechanically band-limited, not white. Measured lag-1
+    #: autocorrelation across the real throws is 0.90-0.97; modelling it as
+    #: white noise made the synthetic spectrum far too flat.
+    ripple_ar1: float = 0.93
 
     #: PMD014 has no output_r_volt instrumentation at all (1224/1224 null).
     has_output_r: bool = False
