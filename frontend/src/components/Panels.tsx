@@ -52,6 +52,7 @@ export function StatusBar({ stats, connected, theme, onTheme }: {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]">
           <Stat label="Machines" value={stats.machines} />
           <Stat label="Normal" value={stats.normal} colour="var(--color-normal)" />
+          <Stat label="Unsure" value={stats.info} colour="var(--color-transit)" />
           <Stat label="Warning" value={stats.warning} colour="var(--color-degraded)" />
           <Stat label="Critical" value={stats.critical} colour="var(--color-fault)" />
           <Stat label="Events" value={stats.events_streamed} />

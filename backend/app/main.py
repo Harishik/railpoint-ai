@@ -59,9 +59,13 @@ async def health() -> dict:
 @app.get("/api/stats")
 async def stats() -> dict:
     sev = [m.severity for m in stream.machines.values()]
+    # The buckets must be exhaustive. "info" - a Normal prediction the model is
+    # not confident about - is its own state, and omitting it made the status bar
+    # silently under-report the fleet.
     return {
         "machines": len(stream.machines),
         "normal": sum(s == "normal" for s in sev),
+        "info": sum(s == "info" for s in sev),
         "warning": sum(s == "warning" for s in sev),
         "critical": sum(s == "critical" for s in sev),
         "events_streamed": stream.streamed,

@@ -72,6 +72,7 @@ export interface Alert {
 export interface Stats {
   machines: number
   normal: number
+  info: number
   warning: number
   critical: number
   events_streamed: number
