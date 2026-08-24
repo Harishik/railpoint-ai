@@ -8,11 +8,21 @@ license = { text = "MIT" }
 authors = [{ name = "Harishik Dev Singh Jamwal", email = "singhharishikdev@gmail.com" }]
 
 dependencies = [
-    "numpy>=2.0,<3",
-    "scipy>=1.14,<2",
-    "pandas>=2.2,<3",
+    # NumPy 2 is the default, but the Intel-Mac ceiling of torch 2.2.x was
+    # compiled against NumPy 1.x - mixing them leaves torch unable to convert
+    # arrays at all ("_ARRAY_API not found"), which breaks silently at runtime
+    # rather than at install time.
+    "numpy>=1.26,<2 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "numpy>=2.0,<3 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    # scipy >=1.14 is built against NumPy 2 and uses np.long, which does not
+    # exist in NumPy 1.x. Kept in step with the numpy pin above.
+    "scipy>=1.11,<1.14 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "scipy>=1.14,<2 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    "pandas>=2.2,<2.3 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "pandas>=2.2,<3 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     "pyarrow>=17",
-    "scikit-learn>=1.5,<2",
+    "scikit-learn>=1.5,<1.7 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "scikit-learn>=1.5,<2 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     "xgboost>=2.1,<4",
     "PyWavelets>=1.7,<2",
     "pydantic>=2.9,<3",
@@ -23,7 +33,11 @@ dependencies = [
 
 [project.optional-dependencies]
 ml = [
-    "torch>=2.4",
+    # PyTorch dropped macOS x86_64 wheels after 2.2.x; 2.13 ships only
+    # macosx_14_0_arm64. This project is developed on an Intel Mac, so the
+    # ceiling is pinned rather than silently failing to install there.
+    "torch>=2.2,<2.3 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "torch>=2.4 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     "onnx>=1.17",
     "onnxruntime>=1.19",
     "shap>=0.46",

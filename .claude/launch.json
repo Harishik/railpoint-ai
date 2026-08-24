@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "railpoint-api",
+      "runtimeExecutable": ".venv/bin/uvicorn",
+      "runtimeArgs": ["backend.app.main:app", "--port", "8000"],
+      "port": 8000
+    },
+    {
+      "name": "railpoint-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "port": 5173
+    }
+  ]
+}

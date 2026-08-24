@@ -72,3 +72,17 @@ def build_data(
 
 if __name__ == "__main__":
     app()
+
+
+@app.command("train")
+def train_cmd(
+    epochs: int = 30,
+    batch_size: int = 128,
+    lr: float = 3e-4,
+    threads: int = 0,
+) -> None:
+    """Train the deep model end to end, then calibrate, evaluate and export."""
+    from pmdlib.train.deep import TrainConfig
+    from pmdlib.train.pipeline import run
+
+    run(TrainConfig(epochs=epochs, batch_size=batch_size, lr=lr), threads=threads or None)

@@ -28,3 +28,10 @@ frontend/dist/
 .DS_Store
 .idea/
 .vscode/
+
+# Frontend build output
+frontend/dist/
+frontend/node_modules/
+
+# Runtime db
+data/*.db
