@@ -14,7 +14,10 @@ from pmdlib.sim.spec import CHANNELS, FaultClass
 
 @pytest.fixture(scope="module")
 def fleet():
-    return generate_dataset(DatasetConfig(n_machines=14, cycles_per_machine=50, seed=11))
+    # 300 cycles is a meaningful slice of a machine's ~900-cycle life. At 50 the
+    # fleet has barely aged, so almost nothing has degraded and the sample says
+    # little about prevalence.
+    return generate_dataset(DatasetConfig(n_machines=14, cycles_per_machine=300, seed=11))
 
 
 @pytest.fixture(scope="module")
@@ -82,7 +85,9 @@ def test_fleet_prevalence_is_realistic(fleet):
     """A fleet where most machines are dying teaches the wrong prior, and makes
     anomaly detection artificially easy. Real railway assets fail rarely; the
     stratified sweep is where balance belongs, not here."""
-    assert 0.02 < fleet[2].is_anomaly.mean() < 0.35
+    assert 0.02 < fleet[2].is_anomaly.mean() < 0.35, (
+        "expected a low but non-trivial anomaly rate over a partial service life"
+    )
 
 
 def test_critical_faults_block_once_advanced(fleet):

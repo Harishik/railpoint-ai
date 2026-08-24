@@ -13,6 +13,7 @@ from dataclasses import dataclass, replace
 import numpy as np
 import pandas as pd
 
+from ..utils.splits import machine_split
 from .degradation import (
     Trajectory,
     severity_from_health,
@@ -90,12 +91,9 @@ def _make_machine_specs(cfg: DatasetConfig, rng: np.random.Generator) -> list[Ma
     return specs
 
 
-def _assign_splits(n: int, fracs: tuple[float, float, float], rng: np.random.Generator) -> np.ndarray:
-    n_train = int(round(n * fracs[0]))
-    n_val = int(round(n * fracs[1]))
-    labels = np.array(["train"] * n_train + ["val"] * n_val + ["test"] * (n - n_train - n_val))
-    rng.shuffle(labels)
-    return labels
+def _assign_splits(n: int, fracs: tuple[float, float, float], _rng: object = None) -> np.ndarray:
+    """Split by machine id, not at random - see pmdlib.utils.splits."""
+    return np.array([machine_split(f"PMD{i + 1:03d}", fracs) for i in range(n)])
 
 
 def generate_dataset(cfg: DatasetConfig | None = None) -> tuple[np.ndarray, np.ndarray, pd.DataFrame]:
