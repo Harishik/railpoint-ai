@@ -20,6 +20,8 @@ from ..sim.spec import CHANNELS
 
 #: Fixed sequence length. Captures are padded or resampled onto this grid.
 SEQ_LEN = 512
+#: Scalars handed to the model beside the sequence. See ``_ripple_spectrum``.
+N_SCALARS = 8
 #: Nominal indication rail, used to bring the 24 V channels into unit range.
 RAIL_V = 23.43
 ON_THRESHOLD_A = 0.5
@@ -34,16 +36,66 @@ def _event_scale(curr: np.ndarray) -> float:
     return float(np.median(finite)) if finite.size else 1.0
 
 
+def _ripple_spectrum(curr: np.ndarray, scale: float) -> tuple[float, float, float, float]:
+    """Periodicity descriptors, computed at FULL resolution.
+
+    This exists because of a hard architectural limit. The CNN stem strides by 8
+    (512 samples -> 64 tokens), and GEARBOX_WEAR's entire signature is a ripple
+    with a 7-16 sample period. After 8x decimation that period is 0.9-2 tokens,
+    at or below Nyquist, so the encoder cannot recover it at all - which is
+    exactly why that class scored 0.13 precision while every class carrying a
+    large-amplitude signature scored above 0.95.
+
+    Rather than pay the quadratic cost of attending over undecimated samples,
+    the periodicity is measured here, before any downsampling, and handed to the
+    model as scalars alongside the sequence.
+    """
+    on = curr > 0.3 * scale
+    idx = np.flatnonzero(on)
+    if idx.size < 32:
+        return 0.0, 0.0, 0.0, 0.0
+    body = curr[idx[0] : idx[-1] + 1] / max(scale, 1e-6)
+    if body.size < 32:
+        return 0.0, 0.0, 0.0, 0.0
+
+    # Remove the slow envelope (inrush decay, plateau slope) so only ripple is left.
+    k = max(5, body.size // 24) | 1
+    trend = np.convolve(body, np.ones(k) / k, mode="same")
+    resid = body - trend
+    resid = resid - resid.mean()
+    if not np.isfinite(resid).all():
+        return 0.0, 0.0, 0.0, 0.0
+
+    spec = np.abs(np.fft.rfft(resid * np.hanning(resid.size))) ** 2
+    freqs = np.fft.rfftfreq(resid.size)
+    total = float(spec[1:].sum()) + 1e-12
+
+    # Ripple band: periods of 3 to 24 samples, covering both the gearbox
+    # (7-16) and motor (3-8) harmonics.
+    band = (freqs >= 1.0 / 24.0) & (freqs <= 1.0 / 3.0)
+    if not band.any():
+        return 0.0, 0.0, 0.0, 0.0
+    bs, bf = spec[band], freqs[band]
+    peak = int(bs.argmax())
+
+    peak_ratio = float(bs[peak]) / total          # power concentrated in one tone
+    band_ratio = float(bs.sum()) / total          # power anywhere in the band
+    dom_period = 1.0 / max(float(bf[peak]), 1e-6)  # samples per cycle
+    p = spec[1:] + 1e-12
+    flatness = float(np.exp(np.log(p).mean()) / p.mean())  # tonal -> low
+    return peak_ratio, band_ratio, dom_period / 24.0, flatness
+
+
 def prepare(signals: np.ndarray, lengths: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return ``(sequence, scalars, mask)``.
 
-    ``sequence`` is ``(n, SEQ_LEN, 5)`` float32, ``scalars`` is ``(n, 4)`` and
+    ``sequence`` is ``(n, SEQ_LEN, 5)`` float32, ``scalars`` is ``(n, 8)`` and
     ``mask`` is ``(n, SEQ_LEN)`` bool marking real samples.
     """
     n = signals.shape[0]
     seq = np.zeros((n, SEQ_LEN, len(CHANNELS)), np.float32)
     mask = np.zeros((n, SEQ_LEN), bool)
-    scalars = np.zeros((n, 4), np.float32)
+    scalars = np.zeros((n, N_SCALARS), np.float32)
 
     i_curr, i_volt = CHANNELS.index("ac_curr"), CHANNELS.index("ac_volt")
 
@@ -82,11 +134,16 @@ def prepare(signals: np.ndarray, lengths: np.ndarray) -> tuple[np.ndarray, np.nd
                 seq[k, :, j] = np.interp(grid, src, out[:, j])
             mask[k, :] = True
 
+        peak_ratio, band_ratio, dom_period, flatness = _ripple_spectrum(curr, scale)
         scalars[k] = (
             np.log1p(scale),          # how big this machine's throw actually is
             np.log1p(length),         # capture length, in samples
             volt_ref / 100.0,         # which supply rail (219 V vs 230 V class)
             float(length >= 600),     # hit the hardware capture cap
+            peak_ratio,               # ripple power in a single tone
+            band_ratio,               # ripple power across the 3-24 sample band
+            dom_period,               # dominant ripple period, normalised
+            flatness,                 # spectral flatness; tonal ripple lowers it
         )
 
     return seq, scalars, mask

@@ -1,0 +1,35 @@
+{
+  "params": 515217,
+  "best_epoch": 0,
+  "test": {
+    "model": "PointMachineNet",
+    "accuracy": 0.8456,
+    "balanced_acc": 0.6072,
+    "macro_f1": 0.5803,
+    "weighted_f1": 0.8293
+  },
+  "conformal": {
+    "alpha": 0.1,
+    "qhat": 0.7604,
+    "coverage": 0.8349,
+    "mean_set_size": 1.009
+  },
+  "rul": {
+    "n": 3292,
+    "rmse": 180.03,
+    "mae": 141.58,
+    "interval_halfwidth": 280.5,
+    "coverage": 0.8712
+  },
+  "anomaly": {
+    "roc_auc": 0.9738,
+    "positive_rate": 0.2918
+  },
+  "acceptance": {
+    "diagnostic_correct": 2,
+    "diagnostic_total": 3,
+    "all_correct": 6,
+    "passed": false,
+    "expected_in_conformal_set": 7
+  }
+}

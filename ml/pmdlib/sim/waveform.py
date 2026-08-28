@@ -117,7 +117,12 @@ def _build_current(
         width = int(rng.integers(2, 7))
         body[start : start + width] = spec.idle_a
 
-    return np.clip(body, spec.idle_a, None)
+    # A motor cannot draw more than its stall current, no matter how much
+    # friction, wear and cold are stacked on it. Without this bound the
+    # multiplicative chain (fault x wear x cold x ice) reached 49.7 A on a
+    # machine whose real recorded maximum is 15.74 A, so the model was being
+    # trained on currents that cannot physically occur.
+    return np.clip(body, spec.idle_a, spec.stall_a)
 
 
 def _build_indication(
@@ -323,7 +328,16 @@ def generate_event(
     supply = np.full(n_total, spec.supply_v + eff.supply_offset_v, dtype=float)
     supply += rng.normal(0.0, spec.supply_noise_v * env.supply_quality, n_total)
     if eff.supply_instability_v:
-        supply += rng.normal(0.0, eff.supply_instability_v, n_total)
+        # A resistive cable fault drops the rail in proportion to the current it
+        # is carrying (V = IR), so its instability tracks the load and is always
+        # a drop, never a lift. Ambient grid noise is load-independent and
+        # symmetric. Modelling both as the same zero-mean Gaussian made a noisy
+        # supply indistinguishable from a failing cable - which is exactly why
+        # E06_CABLE scored 0.31 precision while absorbing healthy events.
+        load_norm = np.clip(current / spec.plateau_a, 0.0, None)
+        supply -= eff.supply_instability_v * load_norm * np.abs(
+            rng.normal(1.0, 0.35, n_total)
+        )
     # Sag grows sub-linearly with load; exponent measured from the real traces.
     load = np.clip(current / spec.plateau_a, 0.0, None)
     supply -= spec.sag_v * eff.sag_scale * np.power(load, spec.sag_exponent)

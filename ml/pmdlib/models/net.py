@@ -27,7 +27,7 @@ from torch import Tensor, nn
 @dataclass
 class NetConfig:
     n_channels: int = 5
-    n_scalars: int = 4
+    n_scalars: int = 8
     n_classes: int = 15
     d_model: int = 128
     n_heads: int = 4

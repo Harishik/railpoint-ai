@@ -21,6 +21,9 @@ from .spec import DEGRADING_FAULTS, FaultClass
 
 #: Health below this counts as failed; the machine is withdrawn for maintenance.
 FAILURE_THRESHOLD = 0.25
+#: Cycles over which an ACCELERATING machine's wear rate ramps up. Absolute,
+#: so a trajectory does not change shape with the simulation horizon.
+ACCELERATION_SCALE_CYCLES = 1200
 #: Health below which degradation becomes visible in the signal. Set so that a
 #: generated fleet shows anomalies on roughly 10-20% of throws. Real railway
 #: fleets fail rarely; a dataset where 50% of throws are abnormal teaches the
@@ -143,7 +146,10 @@ def simulate_trajectory(
 
     if kind is TrajectoryKind.ACCELERATING:
         # Damage compounds: the wear rate itself climbs over the machine's life.
-        ramp = np.linspace(0.3, 2.4, n_cycles)
+        # Indexed on absolute cycle count, not on i/n_cycles. Using the
+        # horizon made the same machine with the same seed age differently
+        # depending only on how many cycles we chose to simulate.
+        ramp = 0.3 + np.arange(n_cycles) * (2.1 / ACCELERATION_SCALE_CYCLES)
         damage = np.cumsum(rng.gamma(shape, rate / shape, n_cycles) * ramp)
     elif kind is TrajectoryKind.SEASONAL:
         season = _seasonal_multiplier(n_cycles, cycles_per_year, rng)

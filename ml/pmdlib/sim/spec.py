@@ -167,7 +167,9 @@ class MachineSpec:
 
     # Supply (V) - measured.
     supply_v: float = 219.0
-    supply_noise_v: float = 0.9
+    #: Measured across the five real captures: 0.61, 0.69, 0.72, 0.64, 0.80 V
+    #: at idle. The earlier 0.9 was a guess and ran ~30% hot.
+    supply_noise_v: float = 0.69
     sag_v: float = 5.64             # measured 5.64 +- 0.36
     #: Sag grows sub-linearly with load. Exponent 0.9 reproduces the real
     #: 13.6 V drop at the 2.66x inrush peak from a 5.64 V drop at plateau.
@@ -250,12 +252,21 @@ class Environment:
 
     @property
     def cold_friction_factor(self) -> float:
-        """Grease stiffens as it cools: ~+18% plateau current at -15 C."""
-        return 1.0 + max(0.0, (15.0 - self.temperature_c)) * 0.006
+        """Grease stiffens as it cools: ~+9% plateau current at -15 C.
+
+        Deliberately modest. Point machines in cold climates are fitted with
+        heaters precisely so that winter does not push a healthy machine out of
+        spec, and an earlier +18% made a healthy machine in ice signal-identical
+        to a mid-severity FRICTION_HIGH fault - the same waveform under two
+        different labels, which is label contamination, not realism.
+        """
+        return 1.0 + max(0.0, (15.0 - self.temperature_c)) * 0.003
 
     @property
     def ice_friction_factor(self) -> float:
-        return 1.0 + self.ice_severity * 0.45
+        # Bounded well below fault magnitude, for the reason in
+        # cold_friction_factor: weather must stay separable from failure.
+        return 1.0 + self.ice_severity * 0.16
 
 
 @dataclass(frozen=True)

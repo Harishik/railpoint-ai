@@ -54,6 +54,16 @@ STAT_TOLERANCE: dict[str, float] = {
     "n_samples": 0.20,
 }
 
+#: Max two-sample KS statistic per channel. The KS test was previously computed
+#: and reported but never consulted, so a generator with the right pooled mass
+#: but the wrong distribution shape would have passed unnoticed.
+KS_TOLERANCE: dict[str, float] = {
+    "ac_curr": 0.34,
+    "ac_volt": 0.34,
+    "as_volt": 0.45,
+    "output_n_volt": 0.45,
+}
+
 ON_THRESHOLD_A = 0.5
 
 
@@ -144,7 +154,9 @@ def calibrate(raw_csv: Path, n_synthetic: int = 200, seed: int = 0) -> Calibrati
         tol = WASSERSTEIN_TOLERANCE[c]
         dist_rows.append(
             {"channel": c, "wasserstein_norm": round(w, 4), "tolerance": tol,
-             "ks_stat": round(float(ks.statistic), 4), "pass": w <= tol}
+             "ks_stat": round(float(ks.statistic), 4),
+             "ks_tolerance": KS_TOLERANCE[c],
+             "pass": bool(w <= tol and float(ks.statistic) <= KS_TOLERANCE[c])}
         )
 
     struct_rows = []

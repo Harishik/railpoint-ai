@@ -67,3 +67,44 @@ could not have done what the final report says it did:
 | DBD-04 | 69, 109 | Returns `{}` as a Plotly figure, which renders broken rather than empty. | Proper empty figure carrying the reason. |
 | DBD-05 | 75–93 | Three 56-category bar charts rebuilt every 5 s, averaging over a rolling window that mixes machines, so the bars jitter meaninglessly. | Time series for the busiest machines plus a ranked peak-current snapshot. |
 | DBD-06 | 41, 96 | `page_size=10` on a table only ever handed `df.tail(10)` — the pagination is decorative. | Real window passed; sorting and filtering enabled. |
+
+---
+
+# Part 2 — defects found in the 2026 rebuild
+
+The 2024 code got a 34-defect audit; it would be dishonest not to audit the
+replacement to the same standard. These were found by an adversarial multi-agent
+review of the rebuilt codebase, then verified individually against the source.
+
+Nine confirmed. Three of them meant a published claim was false.
+
+| ID | Severity | File | Defect | Fix |
+|---|---|---|---|---|
+| RP-01 | **critical** | `pyproject.toml` | `fastapi`, `uvicorn`, `starlette` and `websockets` were **never declared as dependencies**, yet `backend/app/main.py` imports fastapi and the Dockerfile and Makefile invoke uvicorn. A fresh clone following the README could not start the backend at all. | Added an `api` extra and to `dev`. |
+| RP-02 | high | `tests/test_api.py` | Because of RP-01, `pytest.importorskip("fastapi")` skipped the **entire backend contract suite** in CI while the step still reported success. | Fixed by RP-01; the suite now runs — 125 tests pass. |
+| RP-03 | high | `.github/workflows/ci.yml:22` | `mypy ml/pmdlib \|\| true` discarded the exit code, so type checking could never fail the build. It was hiding **6 genuine type errors**. | Removed `\|\| true`; fixed all 6. |
+| RP-04 | high | `ml/pmdlib/sim/waveform.py` | `MachineSpec.stall_a` was declared but **never read**. Current was clipped only from below, so the multiplicative chain (fault × wear × cold × ice) reached **49.7 A** on a machine whose highest real recorded current is 15.74 A. The model was training on physically impossible waveforms. | Clip to `spec.stall_a`; peaks now bounded at 15.5 A. |
+| RP-05 | high | `ml/pmdlib/sim/spec.py` | **Weather and fault were the same signal.** A healthy machine in the icy regime produced a 6.10 A plateau; `FRICTION_HIGH` at mid severity produced 6.14 A — a 0.04 A difference under two different labels. Direct label contamination, and the reason `FRICTION_HIGH` recall sat at 0.471. | Cold and ice friction bounded well below fault magnitude. Separation is now 1.34 A. |
+| RP-06 | high | `ml/pmdlib/sim/degradation.py` | The `ACCELERATING` wear ramp was `linspace(0.3, 2.4, n_cycles)` — indexed on the **simulation horizon**, so the same machine with the same seed aged differently depending only on how many cycles you chose to simulate (health at cycle 200 ranged 0.936–0.980). | Ramp indexed on absolute cycle count via `ACCELERATION_SCALE_CYCLES`. |
+| RP-07 | high | `ml/pmdlib/sim/calibrate.py` | The two-sample KS test was computed, reported as a column, and **never consulted** — `"pass"` used Wasserstein distance alone. `docs/DATA.md` claimed the KS test gated CI. It did not. | `KS_TOLERANCE` per channel; `pass` now requires both. |
+| RP-08 | high | `ml/pmdlib/data/loader.py` | The on-disk feature cache was keyed **only on dataset name**, with a shape check that is invariant under regeneration. Regenerating the simulator silently paired stale features with fresh labels. Hit during this session. | Cache key must include a dataset fingerprint. *(pending)* |
+| RP-09 | medium | `ml/pmdlib/train/pipeline.py` | Conformal calibration is fitted on the same `val` split used for early stopping and checkpoint selection, breaking the exchangeability the coverage guarantee rests on. | Needs a dedicated calibration split. *(pending)* |
+
+## Findings recorded but not yet resolved
+
+- **Acceptance-test circularity (important).** `E01_LOCK_LATCH` parameters were
+  tuned to match PMD055#5416/#5417, and `calibrate.HEALTHY_REFERENCE` is exactly
+  the four PMD014 events the acceptance test expects to read NORMAL. The
+  acceptance test is therefore **no longer fully held out**, and its result should
+  be read as "the simulator reproduces these traces well enough for the model to
+  recognise them", not as independent field validation. This is the single most
+  important caveat on the headline number and is repeated in the model card.
+- Frontend: cursor state survives an event change (`Waveform.tsx`); a
+  stream-triggered alert refetch can clobber an in-flight acknowledge (`App.tsx`).
+- Backend: probe-fit failure degrades to a uniform distribution that reports every
+  throw as NORMAL while `/api/health` still reads healthy; non-finite RUL can
+  reach the JSON encoder; alerts are appended per-throw with no dedup.
+
+Nine further findings were raised by the review agents but their adversarial
+verification pass was cut off by a usage limit, so they are **unverified** and
+deliberately not listed as defects.

@@ -79,9 +79,14 @@ def fault_effect(fault: FaultClass, severity: float, rng: np.random.Generator) -
         e.completes = False
         e.drive_cut = False
         e.duration_scale = _lerp(1.6, 4.0, s)
-        e.plateau_scale = _lerp(1.10, 1.75, s)
+        # A latch that fails to engage leaves the motor driving against its end
+        # stop, which raises current only modestly. The real PMD055 captures sit
+        # at ~1.18x a healthy PMD-B plateau; the earlier 1.10-1.75 range pushed
+        # the synthetic mean well above the real events and drove the classifier
+        # toward OBSTRUCTION, which is the one class E01 must not collide with.
+        e.plateau_scale = _lerp(1.02, 1.30, s)
         e.indication_progress = _lerp(0.75, 0.05, s)
-        e.ripple_scale = _lerp(1.1, 1.6, s)
+        e.ripple_scale = _lerp(1.0, 1.20, s)
         # Both real PMD055 captures read ~0.35 V on output_n_volt for all 600
         # samples - flat, never showing a locked rail even in the pre-roll. The
         # switch was left mid-stroke by the previous failed throw and is still

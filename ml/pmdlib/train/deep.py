@@ -32,6 +32,9 @@ RUL_LOG_SCALE = True
 #: Censored samples - no failure ahead of them - carry rul == -1 and are excluded
 #: from the RUL loss rather than being treated as "fails immediately".
 CENSORED = -1
+#: Effective-number reweighting strength; 0.999 keeps the rare/common weight
+#: ratio near 8x instead of inverse frequency's 69x.
+CLASS_WEIGHT_BETA = 0.999
 
 
 @dataclass
@@ -108,7 +111,17 @@ def train(cfg: TrainConfig | None = None, verbose: bool = True) -> tuple[PointMa
     # The fleet's class distribution is deliberately realistic, so the combined
     # set is imbalanced even though the sweep is balanced. Inverse-frequency
     # weighting keeps the rare shock faults from being ignored.
-    weights = np.where(counts > 0, counts.sum() / np.maximum(counts, 1), 0.0)
+    # Full inverse-frequency weighting overcorrects badly here: NORMAL has ~8.7k
+    # samples against GEARBOX_WEAR's ~127, so inverse frequency hands the rare
+    # class ~69x the weight and the model starts guessing rare classes whenever
+    # it is unsure. Measured cost of that: GEARBOX_WEAR precision 0.126 (87% of
+    # its predictions wrong) and NORMAL recall down at 0.879 despite 0.992
+    # precision. Effective-number reweighting (Cui et al., CVPR 2019) accounts
+    # for the fact that additional samples of a class overlap and so add less
+    # than one sample of information each, which compresses that ratio to ~8x.
+    beta = CLASS_WEIGHT_BETA
+    effective = (1.0 - np.power(beta, counts)) / (1.0 - beta)
+    weights = np.where(counts > 0, 1.0 / np.maximum(effective, 1e-8), 0.0)
     weights = weights / weights[weights > 0].mean()
 
     model = PointMachineNet(cfg.net)
@@ -123,7 +136,13 @@ def train(cfg: TrainConfig | None = None, verbose: bool = True) -> tuple[PointMa
     val_dl = DataLoader(val_ds, batch_size=256)
 
     history: list[dict] = []
-    best = {"macro_f1": -1.0, "epoch": -1, "state": None}
+    # A typed record rather than a heterogeneous dict: the previous
+    # dict[str, float | None] mixed a float, an int and a state_dict, so every
+    # comparison and the final load_state_dict were type errors that CI could
+    # not see because the mypy step was suffixed with `|| true`.
+    best_f1 = -1.0
+    best_epoch = -1
+    best_state: dict[str, Tensor] | None = None
 
     for epoch in range(cfg.epochs):
         model.train()
@@ -184,16 +203,15 @@ def train(cfg: TrainConfig | None = None, verbose: bool = True) -> tuple[PointMa
                 f"   val_acc {acc:.4f}  macroF1 {macro_f1:.4f}  rulRMSE {rmse:7.1f}  {h['sec']}s"
             )
 
-        if macro_f1 > best["macro_f1"]:
-            best = {
-                "macro_f1": macro_f1, "epoch": epoch,
-                "state": {k: v.detach().clone() for k, v in model.state_dict().items()},
-            }
-        elif epoch - best["epoch"] >= cfg.patience:
+        if macro_f1 > best_f1:
+            best_f1 = macro_f1
+            best_epoch = epoch
+            best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+        elif epoch - best_epoch >= cfg.patience:
             if verbose:
-                print(f"  early stop at epoch {epoch} (best {best['epoch']})")
+                print(f"  early stop at epoch {epoch} (best {best_epoch})")
             break
 
-    if best["state"] is not None:
-        model.load_state_dict(best["state"])
-    return model, {"history": history, "best_epoch": best["epoch"], "best_macro_f1": best["macro_f1"]}
+    if best_state is not None:
+        model.load_state_dict(best_state)
+    return model, {"history": history, "best_epoch": best_epoch, "best_macro_f1": best_f1}

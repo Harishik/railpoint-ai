@@ -1,0 +1,8 @@
+event,expected,predicted,correct,diagnostic,why,set_size,in_set,anomaly_score
+PMD014#2593,NORMAL,NORMAL,True,False,"completed throw, textbook current profile",1,True,77.5
+PMD014#2594,E03_LINE_RELAY,E03_LINE_RELAY,True,True,"motor never started, no supply sag",1,True,2747.8
+PMD014#2595,NORMAL,NORMAL,True,False,"completed throw, textbook current profile",1,True,69.6
+PMD014#2596,NORMAL,NORMAL,True,False,"completed throw, textbook current profile",1,True,51.4
+PMD014#2597,NORMAL,NORMAL,True,False,"completed throw, textbook current profile",1,True,42.7
+PMD055#5416,E01_LOCK_LATCH,E01_LOCK_LATCH,True,True,"stalled throw, never locks, drive never cut",2,True,7241.4
+PMD055#5417,E01_LOCK_LATCH,OBSTRUCTION,False,True,"stalled throw, never locks, drive never cut",2,True,7222.8

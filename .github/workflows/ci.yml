@@ -19,7 +19,7 @@ jobs:
         run: .venv/bin/ruff check ml backend tests scripts
 
       - name: Types
-        run: .venv/bin/mypy ml/pmdlib || true
+        run: .venv/bin/mypy ml/pmdlib
 
       # The calibration gate is the credibility check for the whole project:
       # everything downstream trains on generated data, so the generator must be

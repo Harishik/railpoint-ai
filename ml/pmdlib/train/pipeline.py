@@ -161,8 +161,11 @@ def run(cfg: TrainConfig | None = None, threads: int | None = None) -> dict:
         ARTIFACTS / "calibration.npz",
         conformal_qhat=cc.qhat,
         rul_qhat=(ci.qhat if ci else np.nan),
-        maha_mean=scorer.mean,
-        maha_precision=scorer.precision,
+        # The scorer is always fitted before this point, but its fields are
+        # Optional on the class, so make the invariant explicit rather than
+        # letting np.savez receive a possible None.
+        maha_mean=scorer.mean if scorer.mean is not None else np.zeros(0),
+        maha_precision=scorer.precision if scorer.precision is not None else np.zeros((0, 0)),
     )
     (RESULTS / "deep-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     result.per_class.to_csv(RESULTS / "deep-per-class.csv", index=False)
