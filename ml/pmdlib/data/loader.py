@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -53,6 +54,18 @@ class Dataset:
 _CACHE: dict[tuple[str, bool, str], Dataset] = {}
 
 
+def _feature_fingerprint(signals_path: Path) -> str:
+    """Identify the (signals, feature-set) pair a cache entry was built from.
+
+    Uses the signals file's size and modification time rather than hashing 120 MB
+    of float32 on every load, together with the feature names, so that either
+    regenerating the data or changing the extractor invalidates the cache.
+    """
+    st = signals_path.stat()
+    payload = f"{st.st_size}:{st.st_mtime_ns}:{'|'.join(FEATURE_NAMES)}"
+    return hashlib.sha256(payload.encode()).hexdigest()[:32]
+
+
 def load(
     name: str = "stratified",
     *,
@@ -62,8 +75,13 @@ def load(
 ) -> Dataset:
     """Load ``fleet`` or ``stratified``.
 
-    Features are cached to ``data/processed/`` keyed by name, because extracting
-    104 features over 25k events takes long enough to be annoying in a loop.
+    Features are cached to ``data/processed/``, because extracting 113 features
+    over 60k events takes long enough to be annoying in a loop. The cache is
+    keyed on a fingerprint of the signals file *and* the feature set, not on the
+    dataset name: keying on name alone let a regenerated dataset silently reuse
+    features computed from the previous simulator, since the only guard was a
+    shape check that is invariant under regeneration. That happened during
+    development and pairs stale features with fresh labels.
     """
     synth_dir = synth_dir or SYNTH_DIR
     key = (name, with_features, str(synth_dir))
@@ -79,14 +97,21 @@ def load(
 
     if with_features:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        cache_path = CACHE_DIR / f"{name}_features.npy"
+        cache_path = CACHE_DIR / f"{name}_features.npz"
+        fingerprint = _feature_fingerprint(synth_dir / f"{name}_signals.npz")
         if cache_path.exists():
-            cached = np.load(cache_path)
-            if cached.shape == (len(ds), len(FEATURE_NAMES)):
-                ds.features = cached
+            try:
+                blob = np.load(cache_path, allow_pickle=False)
+                if (
+                    str(blob["fingerprint"]) == fingerprint
+                    and blob["features"].shape == (len(ds), len(FEATURE_NAMES))
+                ):
+                    ds.features = blob["features"]
+            except (OSError, KeyError, ValueError):
+                ds.features = None  # unreadable or stale cache: just recompute
         if ds.features is None:
             ds.features = extract_batch(ds.signals, ds.lengths)
-            np.save(cache_path, ds.features)
+            np.savez(cache_path, features=ds.features, fingerprint=fingerprint)
     if cache:
         _CACHE[key] = ds
     return ds
