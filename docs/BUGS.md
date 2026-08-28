@@ -76,7 +76,7 @@ The 2024 code got a 34-defect audit; it would be dishonest not to audit the
 replacement to the same standard. These were found by an adversarial multi-agent
 review of the rebuilt codebase, then verified individually against the source.
 
-Fourteen confirmed. Three of them meant a published claim was false, and one
+Seventeen confirmed. Three of them meant a published claim was false, and one
 had been silently corrupting this session's own results.
 
 | ID | Severity | File | Defect | Fix |
@@ -94,6 +94,9 @@ had been silently corrupting this session's own results.
 | RP-12 | high | `frontend/src/App.tsx` | Every non-normal push refetched the alert list and replaced state wholesale, rolling back an operator's optimistic acknowledge if the refetch landed before the POST response. | `pendingAlerts` ref plus a `mergeAlerts` reconciliation that preserves local state for in-flight ids. |
 | RP-13 | medium | `frontend/src/App.tsx` | A window-level keydown handler called `preventDefault()` on arrow keys **anywhere in the document**, swallowing horizontal scrolling and any other widget's arrow handling, and changed selection without moving focus — leaving a screen-reader user's cursor on a node the app no longer considered selected. | Scoped to the schematic or document body; moves DOM focus to the newly selected node. |
 | RP-14 | medium | `frontend/src/components/Waveform.tsx` | Every null sample rendered as "not wired", but the backend emits null for any non-finite value and the simulator injects mid-capture dropouts. A transient gap was reported to the operator as a missing sensor. | Distinguishes a channel with no readings anywhere ("not wired") from a gap in an instrumented channel ("no data"). |
+| RP-15 | **critical** | `backend/app/main.py` | `/api/health` returned `{"status": "ok"}` unconditionally. With neither the encoder nor the probe loaded, every event fell through to a uniform distribution while the console reported healthy — the one failure mode a safety system must not have. (The severity rule does downgrade it to "info" on low confidence, so it was not a confident all-clear.) | `InferenceService.degraded`; the endpoint now returns **503** with `status: "degraded"` and `scoring: false`. Regression-tested. |
+| RP-16 | high | `backend/app/services/inference.py` | `calibration.npz` was loaded unconditionally *before* the fallback check, so the conformal qhat and Mahalanobis statistics calibrated on the encoder were applied to the linear probe. The probe scores on a different scale and produces no embedding at all, so this voided the coverage guarantee rather than transferring it. | Calibration is loaded only when the encoder is actually serving. Regression-tested. |
+| RP-17 | high | `backend/app/services/inference.py` | `rul_invert` is `expm1(...).clamp(min=0)` — bounded below only. `expm1` overflows to `+inf` for any float32 logit above ~88, and `inf`/`NaN` is not valid JSON, so it would 500 `/api/machines` and corrupt the WebSocket frame. | Non-finite RUL is returned as `None`. |
 | RP-09 | medium | `ml/pmdlib/train/pipeline.py` | Conformal calibration is fitted on the same `val` split used for early stopping and checkpoint selection, breaking the exchangeability the coverage guarantee rests on. | Needs a dedicated calibration split. *(pending)* |
 
 ## Findings recorded but not yet resolved
@@ -107,9 +110,11 @@ had been silently corrupting this session's own results.
   important caveat on the headline number and is repeated in the model card.
 - ~~Frontend: cursor state survives an event change; a stream-triggered alert
   refetch can clobber an in-flight acknowledge.~~ **Fixed (RP-11..RP-14).**
-- Backend: probe-fit failure degrades to a uniform distribution that reports every
-  throw as NORMAL while `/api/health` still reads healthy; non-finite RUL can
-  reach the JSON encoder; alerts are appended per-throw with no dedup.
+- ~~Backend: probe-fit failure while `/api/health` still reads healthy;
+  non-finite RUL can reach the JSON encoder.~~ **Fixed (RP-15..RP-17).**
+- Backend: alerts are appended per-throw with no dedup, so one persistently
+  degrading machine can evict acknowledged alerts from the 200-entry deque.
+  *(open)*
 
 Nine further findings were raised by the review agents but their adversarial
 verification pass was cut off by a usage limit, so they are **unverified** and

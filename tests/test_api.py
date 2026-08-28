@@ -108,3 +108,49 @@ def test_websocket_delivers_a_scored_event(client):
         assert msg["type"] == "event"
         assert msg["event"]["prediction"]["fault"]
         assert msg["machine"]["id"] == msg["event"]["machine_id"]
+
+
+def test_health_reports_degraded_when_nothing_can_score(client):
+    """A console that says "ok" while nothing is being classified is worse than
+    one with no health check, so this must be a 503 and must say so."""
+    from app.main import inference
+
+    net, probe = inference._net, inference._probe
+    try:
+        inference._net, inference._probe = None, None
+        r = client.get("/api/health")
+        assert r.status_code == 503
+        body = r.json()
+        assert body["status"] == "degraded"
+        assert body["scoring"] is False
+    finally:
+        inference._net, inference._probe = net, probe
+
+    ok = client.get("/api/health")
+    assert ok.status_code == 200
+    assert ok.json()["scoring"] is True
+
+
+def test_net_calibration_is_not_applied_to_the_fallback_probe(tmp_path, monkeypatch):
+    """The conformal qhat and Mahalanobis stats index the encoder's output and
+    its embedding space. Applying them to the linear probe would void the
+    coverage guarantee rather than transfer it, so a run that falls back to the
+    probe must keep the default qhat and must not carry Mahalanobis stats."""
+    import numpy as np
+
+    from app.services import inference as inf
+
+    # A calibration file exists, but no net.pt: exactly the fallback case.
+    np.savez(
+        tmp_path / "calibration.npz",
+        conformal_qhat=0.9999,
+        rul_qhat=123.0,
+        maha_mean=np.zeros(4),
+        maha_precision=np.eye(4),
+    )
+    monkeypatch.setattr(inf.settings, "artifacts_dir", tmp_path)
+    svc = inf.InferenceService()
+
+    assert svc._net is None, "no net.pt was written, so the encoder must be absent"
+    assert svc._conformal_qhat != 0.9999, "net-calibrated qhat leaked onto the probe"
+    assert svc._maha_mean is None and svc._maha_prec is None

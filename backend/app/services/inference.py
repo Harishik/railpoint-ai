@@ -72,6 +72,18 @@ class InferenceService:
         self._probe_mean = None
         self._load()
 
+    @property
+    def degraded(self) -> bool:
+        """True when nothing can actually score an event.
+
+        With neither the encoder nor the probe loaded, every event falls through
+        to a uniform distribution whose argmax is CLASS_ORDER[0] - NORMAL. The
+        severity rule downgrades that to "info" on low confidence, so it does not
+        surface as a confident all-clear, but /api/health must still say so
+        rather than reporting "ok" while nothing is being classified.
+        """
+        return self._net is None and self._probe is None
+
     # -- loading ---------------------------------------------------------
     def _load(self) -> None:
         net_path = settings.artifacts_dir / "net.pt"
@@ -91,7 +103,12 @@ class InferenceService:
                 self.version = f"net-{blob['config']['d_model']}d-{blob['config']['n_layers']}L"
             except Exception as exc:  # pragma: no cover - defensive
                 print(f"[inference] trained model present but unusable: {exc}")
-        if calib_path.exists():
+        # Only meaningful for the encoder these were calibrated against. The
+        # probe produces scores on a completely different scale, so applying the
+        # net's conformal qhat to it voids the coverage guarantee rather than
+        # transferring it - and the Mahalanobis stats index the net's embedding
+        # space, which the probe does not even produce.
+        if calib_path.exists() and self._net is not None:
             c = np.load(calib_path)
             self._conformal_qhat = float(c["conformal_qhat"])
             self._rul_qhat = float(c["rul_qhat"])
@@ -119,7 +136,7 @@ class InferenceService:
                 [
                     ("impute", SimpleImputer(strategy="constant", fill_value=-999.0)),
                     ("scale", StandardScaler()),
-                    ("clf", LogisticRegression(max_iter=1500, multi_class="multinomial")),
+                    ("clf", LogisticRegression(max_iter=1500)),
                 ]
             ).fit(ds.features, ds.y)
             self._probe_mean = np.nan_to_num(ds.features, nan=-999.0).mean(axis=0)
@@ -182,7 +199,12 @@ class InferenceService:
             out = self._net(torch.from_numpy(seq), torch.from_numpy(scalars), torch.from_numpy(mask))
         logits = out["fault"].numpy()[0]
         e = np.exp(logits - logits.max())
-        return e / e.sum(), float(rul_invert(out["rul"]).numpy()[0]), out["embedding"].numpy()[0]
+        # expm1 overflows to +inf for any float32 logit above ~88, and a
+        # degenerate capture can produce an all-masked attention row. inf/NaN is
+        # not valid JSON, so it would 500 /api/machines and corrupt the socket
+        # frame rather than simply being an implausible number.
+        rul = float(rul_invert(out["rul"]).numpy()[0])
+        return e / e.sum(), (rul if np.isfinite(rul) else None), out["embedding"].numpy()[0]
 
     def _score_probe(self, vec: np.ndarray):
         if self._probe is None:

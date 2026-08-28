@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
@@ -52,8 +52,18 @@ app.add_middleware(
 
 
 @app.get("/api/health")
-async def health() -> dict:
-    return {"status": "ok", "model_source": inference.source, "model_version": inference.version}
+async def health(response: Response) -> dict:
+    # A console that reports "ok" while nothing is scoring is worse than one
+    # with no health check at all, so this is a 503 the moment no model loads.
+    degraded = inference.degraded
+    if degraded:
+        response.status_code = 503
+    return {
+        "status": "degraded" if degraded else "ok",
+        "model_source": inference.source,
+        "model_version": inference.version,
+        "scoring": not degraded,
+    }
 
 
 @app.get("/api/stats")
