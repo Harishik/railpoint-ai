@@ -108,3 +108,10 @@ class FleetStats(BaseModel):
     open_alerts: int
     model_version: str
     model_source: Literal["trained", "heuristic"]
+
+
+class CopilotRequest(BaseModel):
+    """Ask the copilot to draft a work order, or answer a question about an event."""
+
+    event_id: str
+    question: str | None = None

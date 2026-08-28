@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     fleet_size: int = 12
     stream_seed: int = 7
 
+    #: The maintenance copilot calls the Claude API when credentials are present.
+    #: With this off, or with no ANTHROPIC_API_KEY, it still produces a grounded
+    #: work order from a deterministic drafter - so a reviewer who clones this
+    #: repo sees the real feature rather than an error box.
+    copilot_enabled: bool = True
+
     #: Risk thresholds driving alert severity.
     risk_warning: float = 0.35
     risk_critical: float = 0.65

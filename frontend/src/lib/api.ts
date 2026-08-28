@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Alert, EventDetail, EventSummary, Machine, Stats } from './types'
+import type { Alert, CopilotReply, EventDetail, EventSummary, Machine, Stats } from './types'
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path)
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+  return res.json() as Promise<T>
+}
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
   return res.json() as Promise<T>
 }
@@ -14,6 +24,8 @@ export const api = {
     get<EventSummary[]>(`/api/events${machineId ? `?machine_id=${machineId}` : ''}`),
   event: (id: string) => get<EventDetail>(`/api/events/${id}`),
   alerts: () => get<Alert[]>('/api/alerts'),
+  copilot: (eventId: string, question?: string) =>
+    post<CopilotReply>('/api/copilot', { event_id: eventId, question }),
   alertAction: (id: string, action: 'acknowledge' | 'resolve' | 'reopen') =>
     fetch(`/api/alerts/${id}/${action}`, { method: 'POST' }).then((r) => r.json() as Promise<Alert>),
 }

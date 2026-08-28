@@ -197,3 +197,53 @@ def test_acknowledged_alert_is_not_evicted_by_a_noisy_machine(client):
     still_there = [a for a in client.get("/api/alerts").json() if a["id"] == target]
     assert still_there, "an acknowledged alert was evicted by repeat alerts"
     assert still_there[0]["state"] in ("acknowledged", "resolved")
+
+
+def test_copilot_is_grounded_and_surfaces_uncertainty():
+    """The copilot must cite the real Sehwa maintenance code and must not present
+    an ambiguous conformal set as a settled diagnosis."""
+    from app.services import copilot
+
+    event = {
+        "id": "E1", "machine_id": "PMD055", "direction": "R", "n_samples": 600,
+        "prediction": {
+            "fault": "E01_LOCK_LATCH", "fault_ko": "기억쇠", "err_code": "E01",
+            "confidence": 0.62, "severity": "critical",
+            "prediction_set": ["E01_LOCK_LATCH", "OBSTRUCTION"], "anomaly_score": 9671.8,
+        },
+        "phases": [], "attributions": [{"feature": "drive_cut", "value": 0.0, "contribution": -0.41}],
+    }
+    reply = copilot.answer(event, {"health": 0.31, "rul_cycles": 42.0,
+                                   "rul_low": 8.0, "rul_high": 130.0})
+
+    assert "E01" in reply.citations
+    assert "기억쇠" in reply.answer, "must name the component in Korean"
+    # The load-bearing behaviour: two labels in the set means the answer says so.
+    assert "OBSTRUCTION" in reply.answer and "provisional" in reply.answer.lower()
+    assert "42" in reply.answer, "remaining useful life should reach the work order"
+    assert "does not authorise" in reply.answer, "safety disclaimer is mandatory"
+
+
+def test_copilot_works_without_api_credentials(monkeypatch):
+    """A reviewer cloning the repo has no ANTHROPIC_API_KEY. The feature must
+    still produce a real work order rather than an error."""
+    from app.services import copilot
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    reply = copilot.answer(
+        {"id": "E2", "machine_id": "PMD001", "direction": "N", "n_samples": 260,
+         "prediction": {"fault": "NORMAL", "fault_ko": "정상", "err_code": "",
+                        "confidence": 0.97, "severity": "normal",
+                        "prediction_set": ["NORMAL"], "anomaly_score": 12.0},
+         "phases": [], "attributions": []},
+        None,
+    )
+    assert reply.source == "deterministic"
+    assert reply.model is None
+    assert "Work order" in reply.answer
+
+
+def test_copilot_404s_on_unknown_event(client):
+    r = client.post("/api/copilot", json={"event_id": "does-not-exist"})
+    assert r.status_code == 404

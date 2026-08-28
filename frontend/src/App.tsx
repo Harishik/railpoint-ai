@@ -5,6 +5,7 @@ import { SEVERITY_COLOR, faultLabel, num } from './lib/format'
 import { Schematic } from './components/Schematic'
 import { Waveform } from './components/Waveform'
 import { Evidence } from './components/Evidence'
+import { Copilot } from './components/Copilot'
 import { AlertList, Card, EventList, FleetTable, StatusBar } from './components/Panels'
 
 /** Take the server's alert list, but keep the optimistic state of any alert
@@ -209,6 +210,12 @@ export function App() {
                     </p>
                   )}
                   <Evidence attributions={detail.attributions} onHover={setHoveredFeature} />
+                  <div className="mt-4 border-t border-line pt-3">
+                    <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                      Maintenance copilot
+                    </h3>
+                    <Copilot eventId={detail.id} />
+                  </div>
                 </>
               ) : (
                 <div className="h-32 animate-pulse rounded bg-surface-2" />

@@ -13,6 +13,8 @@ from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDiscon
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
+from .schemas.models import CopilotRequest
+from .services import copilot as copilot_service
 from .services.inference import EXPLAIN_LABELS, InferenceService
 from .services.stream import FleetStream
 
@@ -153,6 +155,32 @@ async def alert_action(alert_id: str, action: str, assignee: str | None = None) 
                 a["assignee"] = assignee
             return a
     raise HTTPException(404, f"unknown alert {alert_id}")
+
+
+@app.post("/api/copilot")
+async def copilot(body: CopilotRequest) -> dict:
+    """Draft a work order for an event, or answer a question about it.
+
+    Grounded strictly in the event's measured values, the model's own
+    attribution, and the decoded Sehwa maintenance-code table. Decision support
+    only - it never authorises a movement or declares a machine fit for service.
+    """
+    record = stream.find_event(body.event_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"unknown event {body.event_id}")
+    machine = stream.machines.get(record["machine_id"])
+    reply = copilot_service.answer(
+        event=record,
+        machine=stream.machine_view(machine) if machine else None,
+        question=body.question,
+    )
+    return {
+        "answer": reply.answer,
+        "source": reply.source,
+        "model": reply.model,
+        "citations": reply.citations,
+        "disclaimer": reply.disclaimer,
+    }
 
 
 @app.websocket("/ws/stream")

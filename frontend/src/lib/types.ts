@@ -81,3 +81,13 @@ export interface Stats {
   model_source: 'trained' | 'heuristic'
   stream_interval_s: number
 }
+
+export type CopilotReply = {
+  answer: string
+  /** Which path produced the text. Shown in the UI: a work order whose
+   *  provenance is unclear is one nobody should sign. */
+  source: 'claude' | 'deterministic'
+  model: string | null
+  citations: string[]
+  disclaimer: string
+}
