@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, useStream } from './lib/api'
 import type { Alert, EventDetail, EventSummary, Machine, Stats } from './lib/types'
 import { SEVERITY_COLOR, faultLabel, num } from './lib/format'
@@ -7,12 +7,25 @@ import { Waveform } from './components/Waveform'
 import { Evidence } from './components/Evidence'
 import { AlertList, Card, EventList, FleetTable, StatusBar } from './components/Panels'
 
+/** Take the server's alert list, but keep the optimistic state of any alert
+ *  whose own action is still in flight. Without this, a push-triggered refetch
+ *  that lands between the click and the POST response reverts the row. */
+function mergeAlerts(fresh: Alert[], prev: Alert[], pending: Set<string>): Alert[] {
+  if (pending.size === 0) return fresh
+  const local = new Map(prev.map((a) => [a.id, a]))
+  return fresh.map((a) => (pending.has(a.id) ? (local.get(a.id) ?? a) : a))
+}
+
 export function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const [stats, setStats] = useState<Stats | null>(null)
   const [machines, setMachines] = useState<Machine[]>([])
   const [events, setEvents] = useState<EventSummary[]>([])
   const [alerts, setAlerts] = useState<Alert[]>([])
+  // Ids with an acknowledge/resolve POST still in flight. A push event can
+  // trigger a full alert refetch at any moment, and replacing state wholesale
+  // would roll the operator's optimistic update back under their cursor.
+  const pendingAlerts = useRef<Set<string>>(new Set())
   const [selectedMachine, setSelectedMachine] = useState<string | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
   const [detail, setDetail] = useState<EventDetail | null>(null)
@@ -45,7 +58,9 @@ export function App() {
         setTimeout(() => setRecent((prev) => {
           const next = new Set(prev); next.delete(msg.machine.id); return next
         }), 1000)
-        void api.alerts().then(setAlerts)
+        void api.alerts().then((fresh) =>
+          setAlerts((prev) => mergeAlerts(fresh, prev, pendingAlerts.current)),
+        )
       }
       void api.stats().then(setStats)
     }, []),
@@ -70,9 +85,12 @@ export function App() {
       setAlerts((prev) => prev.map((a) => (a.id === id
         ? { ...a, state: action === 'acknowledge' ? 'acknowledged' : action === 'resolve' ? 'resolved' : 'open' }
         : a)))
-      void api.alertAction(id, action).then((updated) =>
-        setAlerts((prev) => prev.map((a) => (a.id === updated.id ? updated : a))),
-      )
+      pendingAlerts.current.add(id)
+      void api.alertAction(id, action)
+        .then((updated) =>
+          setAlerts((prev) => prev.map((a) => (a.id === updated.id ? updated : a))),
+        )
+        .finally(() => pendingAlerts.current.delete(id))
     }, [],
   )
 
@@ -81,14 +99,26 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!machines.length) return
-      const target = e.target as HTMLElement | null
-      if (target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) return
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      const target = e.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      // Only claim the arrow keys where they mean "move along the track". A
+      // window-level handler that swallowed them everywhere also swallowed
+      // horizontal scrolling and any other widget's own arrow handling.
+      const inSchematic = !!target?.closest('[data-schematic]')
+      const onBody = target === document.body || target === null
+      if (!inSchematic && !onBody) return
       e.preventDefault()
       const ids = machines.map((m) => m.id)
       const at = selectedMachine ? ids.indexOf(selectedMachine) : -1
       const step = e.key === 'ArrowRight' ? 1 : -1
-      setSelectedMachine(ids[(at + step + ids.length) % ids.length])
+      const next = ids[(at + step + ids.length) % ids.length]
+      setSelectedMachine(next)
+      // Selection without focus leaves a screen-reader user's virtual cursor
+      // behind, reading a node the app no longer considers selected.
+      requestAnimationFrame(() => {
+        document.querySelector<SVGGElement>(`[data-machine-node="${next}"]`)?.focus()
+      })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

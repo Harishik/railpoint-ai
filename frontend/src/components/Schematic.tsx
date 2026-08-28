@@ -25,6 +25,7 @@ export function Schematic({ machines, selected, onSelect, recent }: Props) {
       className="w-full"
       style={{ maxHeight: 260 }}
       role="group"
+      data-schematic=""
       aria-label="Interlocking schematic. Each node is a point machine, coloured by detected position."
     >
       {[30, 70].map((y) => (
@@ -52,6 +53,7 @@ export function Schematic({ machines, selected, onSelect, recent }: Props) {
             onClick={() => onSelect(m.id)}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(m.id) } }}
             tabIndex={0}
+            data-machine-node={m.id}
             role="button"
             aria-label={`${m.id}, ${POSITION_LABEL[m.position]}, ${m.severity}, health ${(m.health.health * 100).toFixed(0)} percent, last event ${ago(m.last_event_at)} ago`}
             className="cursor-pointer outline-none"

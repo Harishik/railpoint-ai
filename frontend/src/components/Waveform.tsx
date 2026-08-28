@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { EventDetail } from '../lib/types'
 import { CHANNEL_COLOR, CHANNEL_LABEL, PHASE_LABEL, num } from '../lib/format'
 
@@ -20,6 +20,13 @@ type Scale = (v: number) => number
 export function Waveform({ event, hoveredFeature }: Props) {
   const [hidden, setHidden] = useState<Set<string>>(new Set(['output_r_volt']))
   const [cursor, setCursor] = useState<number | null>(null)
+
+  // The cursor is an index into *this* event's samples, so it must not survive a
+  // change of event: sample 520 of a 600-sample capture is out of range on a
+  // 259-sample one, and the readout would describe a sample that is not there.
+  // Channel visibility deliberately does persist - that is an operator
+  // preference, not a property of the event.
+  useEffect(() => { setCursor(null) }, [event.id])
   const svgRef = useRef<SVGSVGElement>(null)
   const boxRef = useRef<HTMLDivElement>(null)
 
@@ -104,10 +111,20 @@ export function Waveform({ event, hoveredFeature }: Props) {
     setCursor(i >= 0 && i < n ? i : null)
   }
 
+  // A channel with no readings anywhere is not instrumented on this machine
+  // (PMD014 has no output_r wiring at all). A channel that has readings but is
+  // null *here* is a dropout in the recording chain. Reporting the second as
+  // "not wired" tells the operator the machine lacks a sensor it actually has.
+  const wired = useMemo(
+    () => new Map(event.channels.map((c) => [c.name, c.values.some((v) => v != null)])),
+    [event],
+  )
+
   const readout = cursor == null ? null : event.channels.map((c) => ({
     name: c.name,
     unit: c.unit,
     value: c.values[cursor] ?? null,
+    wired: wired.get(c.name) ?? false,
     delta: c.name === SUPPLY && c.values[cursor] != null ? c.values[cursor]! - supplyRef : null,
   }))
 
@@ -248,7 +265,7 @@ export function Waveform({ event, hoveredFeature }: Props) {
                 <span className="h-0.5 w-2.5 rounded-full" style={{ background: CHANNEL_COLOR[r.name] }} />
                 <span className="text-ink-faint">{CHANNEL_LABEL[r.name]}</span>
                 <span className="num">
-                  {r.value == null ? 'not wired' : `${num(r.value)} ${r.unit}`}
+                  {r.value == null ? (r.wired ? 'no data' : 'not wired') : `${num(r.value)} ${r.unit}`}
                   {r.delta != null && <span className="text-ink-faint"> ({r.delta >= 0 ? '+' : ''}{num(r.delta, 1)})</span>}
                 </span>
               </span>

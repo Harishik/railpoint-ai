@@ -76,8 +76,8 @@ The 2024 code got a 34-defect audit; it would be dishonest not to audit the
 replacement to the same standard. These were found by an adversarial multi-agent
 review of the rebuilt codebase, then verified individually against the source.
 
-Ten confirmed. Three of them meant a published claim was false, and one had
-been silently corrupting this session's own results.
+Fourteen confirmed. Three of them meant a published claim was false, and one
+had been silently corrupting this session's own results.
 
 | ID | Severity | File | Defect | Fix |
 |---|---|---|---|---|
@@ -90,6 +90,10 @@ been silently corrupting this session's own results.
 | RP-07 | high | `ml/pmdlib/sim/calibrate.py` | The two-sample KS test was computed, reported as a column, and **never consulted** — `"pass"` used Wasserstein distance alone. `docs/DATA.md` claimed the KS test gated CI. It did not. | `KS_TOLERANCE` per channel; `pass` now requires both. |
 | RP-08 | high | `ml/pmdlib/data/loader.py` | The on-disk feature cache was keyed **only on dataset name**, with a shape check that is invariant under regeneration. Regenerating the simulator silently paired stale features with fresh labels. Hit during this session. | Cache key is now a SHA-256 fingerprint of the signals file plus the feature-name list, so regenerating the data or changing the extractor invalidates it. |
 | RP-10 | high | `ml/pmdlib/cli.py:73` | `if __name__ == "__main__": app()` sat **above** the `@app.command("train")` decorator, so `python -m pmdlib.cli` invoked `app()` before `train` was registered. The command silently did not exist via that entrypoint while working fine via the `railpoint` console script. **Two training runs completed with exit status 0 having trained nothing**, and their stale results were nearly reported as new. | Guard moved to the bottom of the file; both entrypoints now expose all three commands. |
+| RP-11 | high | `frontend/src/components/Waveform.tsx` | `cursor` is an index into the current event's samples but was never reset when the `event` prop changed, and `App.tsx` mounts `<Waveform>` without a `key`. Hovering sample 520 of a 600-sample capture and then selecting a 259-sample one left the readout describing a sample that does not exist. | Reset `cursor` on `event.id`. Channel visibility deliberately still persists — that is an operator preference, not a property of the event. |
+| RP-12 | high | `frontend/src/App.tsx` | Every non-normal push refetched the alert list and replaced state wholesale, rolling back an operator's optimistic acknowledge if the refetch landed before the POST response. | `pendingAlerts` ref plus a `mergeAlerts` reconciliation that preserves local state for in-flight ids. |
+| RP-13 | medium | `frontend/src/App.tsx` | A window-level keydown handler called `preventDefault()` on arrow keys **anywhere in the document**, swallowing horizontal scrolling and any other widget's arrow handling, and changed selection without moving focus — leaving a screen-reader user's cursor on a node the app no longer considered selected. | Scoped to the schematic or document body; moves DOM focus to the newly selected node. |
+| RP-14 | medium | `frontend/src/components/Waveform.tsx` | Every null sample rendered as "not wired", but the backend emits null for any non-finite value and the simulator injects mid-capture dropouts. A transient gap was reported to the operator as a missing sensor. | Distinguishes a channel with no readings anywhere ("not wired") from a gap in an instrumented channel ("no data"). |
 | RP-09 | medium | `ml/pmdlib/train/pipeline.py` | Conformal calibration is fitted on the same `val` split used for early stopping and checkpoint selection, breaking the exchangeability the coverage guarantee rests on. | Needs a dedicated calibration split. *(pending)* |
 
 ## Findings recorded but not yet resolved
@@ -101,8 +105,8 @@ been silently corrupting this session's own results.
   be read as "the simulator reproduces these traces well enough for the model to
   recognise them", not as independent field validation. This is the single most
   important caveat on the headline number and is repeated in the model card.
-- Frontend: cursor state survives an event change (`Waveform.tsx`); a
-  stream-triggered alert refetch can clobber an in-flight acknowledge (`App.tsx`).
+- ~~Frontend: cursor state survives an event change; a stream-triggered alert
+  refetch can clobber an in-flight acknowledge.~~ **Fixed (RP-11..RP-14).**
 - Backend: probe-fit failure degrades to a uniform distribution that reports every
   throw as NORMAL while `/api/health` still reads healthy; non-finite RUL can
   reach the JSON encoder; alerts are appended per-throw with no dedup.
