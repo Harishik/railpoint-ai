@@ -154,3 +154,46 @@ def test_net_calibration_is_not_applied_to_the_fallback_probe(tmp_path, monkeypa
     assert svc._net is None, "no net.pt was written, so the encoder must be absent"
     assert svc._conformal_qhat != 0.9999, "net-calibrated qhat leaked onto the probe"
     assert svc._maha_mean is None and svc._maha_prec is None
+
+
+def test_repeated_faults_collapse_into_one_alert(client):
+    """A machine past the symptom threshold raises the same condition on every
+    throw. Appending one alert per throw floods the bounded deque and evicts
+    alerts the operator has already acknowledged, losing their triage work."""
+    from app.main import stream
+
+    stream.alerts.clear()
+    for _ in range(400):
+        stream.step()
+
+    alerts = client.get("/api/alerts").json()
+    pairs = [(a["machine_id"], a["fault"]) for a in alerts]
+    assert len(pairs) == len(set(pairs)), "the same fault on one machine appeared twice"
+
+    repeated = [a for a in alerts if a["count"] > 1]
+    if repeated:
+        a = repeated[0]
+        assert a["last_ts"] is not None and a["last_ts"] >= a["ts"]
+
+
+def test_acknowledged_alert_is_not_evicted_by_a_noisy_machine(client):
+    """The specific regression: acknowledge an alert, then let the fleet run.
+    Before dedup, one persistently degrading machine could push it out of the
+    200-entry deque entirely."""
+    from app.main import stream
+
+    stream.alerts.clear()
+    for _ in range(60):
+        stream.step()
+    alerts = client.get("/api/alerts").json()
+    if not alerts:
+        return  # nothing raised in this window; nothing to assert
+
+    target = alerts[0]["id"]
+    client.post(f"/api/alerts/{target}/acknowledge")
+    for _ in range(400):
+        stream.step()
+
+    still_there = [a for a in client.get("/api/alerts").json() if a["id"] == target]
+    assert still_there, "an acknowledged alert was evicted by repeat alerts"
+    assert still_there[0]["state"] in ("acknowledged", "resolved")

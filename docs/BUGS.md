@@ -76,7 +76,7 @@ The 2024 code got a 34-defect audit; it would be dishonest not to audit the
 replacement to the same standard. These were found by an adversarial multi-agent
 review of the rebuilt codebase, then verified individually against the source.
 
-Seventeen confirmed. Three of them meant a published claim was false, and one
+Eighteen confirmed. Three of them meant a published claim was false, and one
 had been silently corrupting this session's own results.
 
 | ID | Severity | File | Defect | Fix |
@@ -97,6 +97,7 @@ had been silently corrupting this session's own results.
 | RP-15 | **critical** | `backend/app/main.py` | `/api/health` returned `{"status": "ok"}` unconditionally. With neither the encoder nor the probe loaded, every event fell through to a uniform distribution while the console reported healthy — the one failure mode a safety system must not have. (The severity rule does downgrade it to "info" on low confidence, so it was not a confident all-clear.) | `InferenceService.degraded`; the endpoint now returns **503** with `status: "degraded"` and `scoring: false`. Regression-tested. |
 | RP-16 | high | `backend/app/services/inference.py` | `calibration.npz` was loaded unconditionally *before* the fallback check, so the conformal qhat and Mahalanobis statistics calibrated on the encoder were applied to the linear probe. The probe scores on a different scale and produces no embedding at all, so this voided the coverage guarantee rather than transferring it. | Calibration is loaded only when the encoder is actually serving. Regression-tested. |
 | RP-17 | high | `backend/app/services/inference.py` | `rul_invert` is `expm1(...).clamp(min=0)` — bounded below only. `expm1` overflows to `+inf` for any float32 logit above ~88, and `inf`/`NaN` is not valid JSON, so it would 500 `/api/machines` and corrupt the WebSocket frame. | Non-finite RUL is returned as `None`. |
+| RP-18 | high | `backend/app/services/stream.py` | Every warning/critical throw appended a new alert with no dedup. A machine past the symptom threshold raises the same condition on *every* subsequent throw, so one degrading machine floods the 200-entry deque and evicts alerts an operator has already acknowledged — losing their triage work. | Alerts collapse per (machine, fault) while unresolved, carrying a `count` and `last_ts`; a warning that escalates to critical reopens. Regression-tested against eviction. |
 | RP-09 | medium | `ml/pmdlib/train/pipeline.py` | Conformal calibration is fitted on the same `val` split used for early stopping and checkpoint selection, breaking the exchangeability the coverage guarantee rests on. | Needs a dedicated calibration split. *(pending)* |
 
 ## Findings recorded but not yet resolved
@@ -112,9 +113,7 @@ had been silently corrupting this session's own results.
   refetch can clobber an in-flight acknowledge.~~ **Fixed (RP-11..RP-14).**
 - ~~Backend: probe-fit failure while `/api/health` still reads healthy;
   non-finite RUL can reach the JSON encoder.~~ **Fixed (RP-15..RP-17).**
-- Backend: alerts are appended per-throw with no dedup, so one persistently
-  degrading machine can evict acknowledged alerts from the 200-entry deque.
-  *(open)*
+- ~~Backend: alerts are appended per-throw with no dedup.~~ **Fixed (RP-18).**
 
 Nine further findings were raised by the review agents but their adversarial
 verification pass was cut off by a usage limit, so they are **unverified** and

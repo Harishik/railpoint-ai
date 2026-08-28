@@ -92,6 +92,11 @@ class Alert(BaseModel):
     message: str
     state: Literal["open", "acknowledged", "resolved"]
     assignee: str | None = None
+    #: How many throws have raised this same condition. A persistently degrading
+    #: machine reports one alert with a rising count, not one alert per throw.
+    count: int = 1
+    #: When it was last seen, as distinct from when it was first raised.
+    last_ts: datetime | None = None
 
 
 class FleetStats(BaseModel):

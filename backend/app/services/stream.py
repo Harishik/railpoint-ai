@@ -200,15 +200,40 @@ class FleetStream:
         self.streamed += 1
 
         if severity_label in ("warning", "critical"):
-            self.alerts.appendleft(
-                {
-                    "id": f"A{next(self._alert_ids):05d}", "machine_id": mid,
-                    "event_id": event_id, "ts": now.isoformat(), "severity": severity_label,
-                    "fault": scored.fault, "fault_ko": ko,
-                    "message": f"{en} detected on {mid}" + (f" ({code})" if code else ""),
-                    "state": "open", "assignee": None,
-                }
+            # Collapse repeats of the same condition on the same machine. A
+            # machine past the symptom threshold raises this on *every* throw
+            # for the rest of its life, so appending unconditionally floods the
+            # 200-entry deque and evicts alerts an operator has already
+            # acknowledged - losing their triage work to a single noisy machine.
+            existing = next(
+                (
+                    a for a in self.alerts
+                    if a["machine_id"] == mid
+                    and a["fault"] == scored.fault
+                    and a["state"] != "resolved"
+                ),
+                None,
             )
+            if existing is not None:
+                existing["count"] += 1
+                existing["last_ts"] = now.isoformat()
+                existing["event_id"] = event_id
+                # A condition that worsens is worth surfacing again, so a
+                # warning that becomes critical reopens for a second look.
+                if severity_label == "critical" and existing["severity"] != "critical":
+                    existing["severity"] = "critical"
+                    existing["state"] = "open"
+            else:
+                self.alerts.appendleft(
+                    {
+                        "id": f"A{next(self._alert_ids):05d}", "machine_id": mid,
+                        "event_id": event_id, "ts": now.isoformat(), "severity": severity_label,
+                        "fault": scored.fault, "fault_ko": ko,
+                        "message": f"{en} detected on {mid}" + (f" ({code})" if code else ""),
+                        "state": "open", "assignee": None,
+                        "count": 1, "last_ts": now.isoformat(),
+                    }
+                )
         return {"type": "event", "event": self.summary(record), "machine": self.machine_view(st)}
 
     # -- views -----------------------------------------------------------
