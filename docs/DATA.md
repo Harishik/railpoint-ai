@@ -133,10 +133,24 @@ Searched, not assumed. As of August 2026:
    aligned to the E01–E07 component codes. A hidden per-machine degradation state
    makes RUL ground truth exact by construction.
 2. **The 7 real events as acceptance test** — never trained on.
-3. **MetroPT-3** (UCI, CC BY 4.0) as a genuine-field-data track: 1.5 M rows at
-   0.1 Hz, Feb–Aug 2020, Porto Metro air production unit, 4 documented failures.
-   A different asset, but real, and it demonstrates the pipeline on data nobody
-   generated for us.
+3. **MetroPT-3** (UCI 791, CC BY 4.0) as a genuine-field-data track: 1,516,948
+   readings at ~0.1 Hz, Feb–Aug 2020, Porto Metro air production unit, with four
+   air-leak failures documented by the authors. A different asset, but real, and
+   it tests the method on data nobody generated for us. Implemented in
+   `ml/pmdlib/data/metropt.py` and `scripts/metropt_experiment.py`; the 208 MB
+   archive is not committed.
+
+   **What it found is worth more than the headline.** The same unsupervised
+   Mahalanobis pipeline reaches **ROC-AUC 0.956** — failure windows score a
+   median 90 against a normal median of 10. But **precision@100 is 0.00**: 337
+   normal windows outscore the *highest* failure window, and 431 of the top 1000
+   fall on a single undocumented day. MetroPT-3 labels air-leak failures only,
+   and the asset plainly has other real anomalies.
+
+   A maintenance team told to investigate the top 100 alarms would find none of
+   the four documented failures. **AUC flatters an anomaly detector that could
+   not be used as an alarm list**, which is exactly the kind of result a project
+   trained mostly on its own simulator needs to publish rather than bury.
 
 Every headline metric in this repository states which of these three it was
 measured on.

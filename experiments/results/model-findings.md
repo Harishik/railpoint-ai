@@ -111,6 +111,43 @@ cable raises series resistance, undervoltage drops the rail.
 
 ---
 
+## 5. Real field data: an AUC that a maintenance team could not use
+
+MetroPT-3 (UCI 791, CC BY 4.0) is the only data in this project that nobody
+generated for it: 1,516,948 readings from a Porto Metro air production unit over
+six months, with four air-leak failures documented by the authors.
+
+Running the same unsupervised pipeline against it produced two numbers that
+disagree:
+
+| metric | value |
+|---|---|
+| ROC-AUC | **0.9564** |
+| precision@50 | **0.00** |
+| precision@100 | **0.00** |
+| precision@1000 | 0.048 |
+| failure-window score, median / max | 89.7 / 327.7 |
+| normal-window score, median | 10.2 |
+| normal windows scoring above the **highest** failure window | **337** |
+
+The AUC is not wrong. Failure windows really do score ~9x a typical normal
+window. But the extreme tail is dominated by something else entirely — 431 of
+the top 1000 windows fall on 2020-06-23, which is not a documented failure day at
+all. MetroPT-3 labels **air-leak failures only**, and a six-month record of an
+operating compressor plainly contains other genuine anomalies: maintenance
+activity, sensor excursions, unusual duty cycles.
+
+**A team told "investigate the top 100 alarms" would find none of the four
+failures.** That is the number that decides whether anyone uses the system, and
+ROC-AUC hides it completely.
+
+Two things follow. First, ranking metrics belong next to AUC in any
+anomaly-detection report — this project now prints both. Second, an unsupervised
+detector on real data is answering "what is unusual", not "what is the failure
+you care about", and those diverge more than the literature's AUC tables suggest.
+
+---
+
 ## Standing limitations
 
 - **PMD055 is still misclassified** as of the last completed run, and its

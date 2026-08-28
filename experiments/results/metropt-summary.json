@@ -1,0 +1,19 @@
+{
+  "dataset": "MetroPT-3 (UCI 791, CC BY 4.0)",
+  "asset": "Porto Metro train, Air Production Unit",
+  "readings": 1516948,
+  "windows": 252714,
+  "features": 28,
+  "documented_failures": 4,
+  "train_windows_normal_only": 124922,
+  "test_windows": 126357,
+  "test_anomaly_rate": 0.0279,
+  "roc_auc": 0.9564,
+  "precision_at_50": 0.0,
+  "precision_at_100": 0.0,
+  "precision_at_1000": 0.048,
+  "failure_score_median": 89.7,
+  "failure_score_max": 327.7,
+  "normal_score_median": 10.2,
+  "normal_windows_above_failure_max": 337
+}
