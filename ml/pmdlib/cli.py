@@ -70,8 +70,6 @@ def build_data(
     console.print(f"written to [cyan]{out.relative_to(ROOT)}[/cyan]")
 
 
-if __name__ == "__main__":
-    app()
 
 
 @app.command("train")
@@ -86,3 +84,11 @@ def train_cmd(
     from pmdlib.train.pipeline import run
 
     run(TrainConfig(epochs=epochs, batch_size=batch_size, lr=lr), threads=threads or None)
+
+
+# Must stay at the very bottom. When this sits above a command
+# definition, `python -m pmdlib.cli` runs app() before that command is
+# registered, so the command silently does not exist - which is exactly how
+# two training runs completed "successfully" without training anything.
+if __name__ == "__main__":
+    app()

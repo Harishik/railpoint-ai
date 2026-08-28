@@ -76,7 +76,8 @@ The 2024 code got a 34-defect audit; it would be dishonest not to audit the
 replacement to the same standard. These were found by an adversarial multi-agent
 review of the rebuilt codebase, then verified individually against the source.
 
-Nine confirmed. Three of them meant a published claim was false.
+Ten confirmed. Three of them meant a published claim was false, and one had
+been silently corrupting this session's own results.
 
 | ID | Severity | File | Defect | Fix |
 |---|---|---|---|---|
@@ -88,6 +89,7 @@ Nine confirmed. Three of them meant a published claim was false.
 | RP-06 | high | `ml/pmdlib/sim/degradation.py` | The `ACCELERATING` wear ramp was `linspace(0.3, 2.4, n_cycles)` — indexed on the **simulation horizon**, so the same machine with the same seed aged differently depending only on how many cycles you chose to simulate (health at cycle 200 ranged 0.936–0.980). | Ramp indexed on absolute cycle count via `ACCELERATION_SCALE_CYCLES`. |
 | RP-07 | high | `ml/pmdlib/sim/calibrate.py` | The two-sample KS test was computed, reported as a column, and **never consulted** — `"pass"` used Wasserstein distance alone. `docs/DATA.md` claimed the KS test gated CI. It did not. | `KS_TOLERANCE` per channel; `pass` now requires both. |
 | RP-08 | high | `ml/pmdlib/data/loader.py` | The on-disk feature cache was keyed **only on dataset name**, with a shape check that is invariant under regeneration. Regenerating the simulator silently paired stale features with fresh labels. Hit during this session. | Cache key must include a dataset fingerprint. *(pending)* |
+| RP-10 | high | `ml/pmdlib/cli.py:73` | `if __name__ == "__main__": app()` sat **above** the `@app.command("train")` decorator, so `python -m pmdlib.cli` invoked `app()` before `train` was registered. The command silently did not exist via that entrypoint while working fine via the `railpoint` console script. **Two training runs completed with exit status 0 having trained nothing**, and their stale results were nearly reported as new. | Guard moved to the bottom of the file; both entrypoints now expose all three commands. |
 | RP-09 | medium | `ml/pmdlib/train/pipeline.py` | Conformal calibration is fitted on the same `val` split used for early stopping and checkpoint selection, breaking the exchangeability the coverage guarantee rests on. | Needs a dedicated calibration split. *(pending)* |
 
 ## Findings recorded but not yet resolved
