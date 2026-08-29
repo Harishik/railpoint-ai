@@ -28,8 +28,14 @@ export function Card({ title, aside, children, className = '', scroll = false }:
   )
 }
 
-export function StatusBar({ stats, connected, theme, onTheme }: {
-  stats: Stats | null; connected: boolean; theme: 'dark' | 'light'; onTheme: () => void
+export function StatusBar({ stats, connected, notice, theme, onTheme }: {
+  stats: Stats | null
+  connected: boolean
+  /** Overrides the Live/Reconnecting label while the base data is still
+   *  loading, so the header cannot claim "Live" over an empty schematic. */
+  notice?: string | null
+  theme: 'dark' | 'light'
+  onTheme: () => void
 }) {
   return (
     <header className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-line bg-surface-1 px-4 py-2.5">
@@ -45,7 +51,9 @@ export function StatusBar({ stats, connected, theme, onTheme }: {
           className="h-1.5 w-1.5 rounded-full"
           style={{ background: connected ? 'var(--color-normal)' : 'var(--color-degraded)' }}
         />
-        <span className="text-[12px] text-ink-dim">{connected ? 'Live' : 'Reconnecting'}</span>
+        <span className="text-[12px] text-ink-dim">
+          {notice ?? (connected ? 'Live' : 'Reconnecting')}
+        </span>
       </div>
 
       {stats && (

@@ -32,21 +32,42 @@ export function App() {
   const [detail, setDetail] = useState<EventDetail | null>(null)
   const [hoveredFeature, setHoveredFeature] = useState<string | null>(null)
   const [recent, setRecent] = useState<Set<string>>(new Set())
+  const [bootError, setBootError] = useState<string | null>(null)
 
   useEffect(() => {
     document.documentElement.classList.toggle('light', theme === 'light')
     document.documentElement.classList.toggle('dark', theme === 'dark')
   }, [theme])
 
-  useEffect(() => {
-    void Promise.all([api.stats(), api.machines(), api.events(), api.alerts()]).then(
-      ([s, m, e, a]) => {
-        setStats(s); setMachines(m); setEvents(e); setAlerts(a)
-        if (e.length && !selectedEvent) setSelectedEvent(e[0].id)
-      },
-    )
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // The base data is fetched once at mount. If the API is still starting - it
+  // loads torch and the model weights, which takes a while - that single attempt
+  // fails and the schematic and fleet table stay permanently empty, while the
+  // header keeps updating from the WebSocket and claims "Live". A dashboard that
+  // reports itself healthy over a blank schematic is worse than one that says it
+  // is still loading, so this retries with backoff until it succeeds.
+  const loadBase = useCallback(async () => {
+    const [s, m, e, a] = await Promise.all([
+      api.stats(), api.machines(), api.events(), api.alerts(),
+    ])
+    setStats(s); setMachines(m); setEvents(e); setAlerts(a)
+    setBootError(null)
+    if (e.length) setSelectedEvent((prev) => prev ?? e[0].id)
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    let delay = 500
+    const attempt = () => {
+      void loadBase().catch(() => {
+        if (cancelled) return
+        setBootError('Waiting for the API…')
+        delay = Math.min(delay * 1.6, 5000)
+        window.setTimeout(attempt, delay)
+      })
+    }
+    attempt()
+    return () => { cancelled = true }
+  }, [loadBase])
 
   const connected = useStream(
     useCallback((msg) => {
@@ -143,7 +164,7 @@ export function App() {
       <p aria-live="polite" className="sr-only">
         {latestAlert ? `${latestAlert.severity} alert: ${latestAlert.message}` : ''}
       </p>
-      <StatusBar stats={stats} connected={connected} theme={theme} onTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} />
+      <StatusBar stats={stats} connected={connected} notice={bootError} theme={theme} onTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} />
 
       <main id="console" className="grid flex-1 gap-3 overflow-auto p-3 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
         <div className="flex flex-col gap-3">

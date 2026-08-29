@@ -1,16 +1,37 @@
 {
   "version": "0.0.1",
+  "_comment": [
+    "Absolute paths throughout, and the API runs as `python -m uvicorn` with an",
+    "explicit --app-dir instead of relying on the working directory. The project",
+    "folder contains spaces and ends in a period, and the preview launcher runs",
+    "with a working directory it cannot always resolve ('getcwd: cannot access",
+    "parent directories'), which made every relative path here fail with",
+    "'Operation not permitted'."
+  ],
   "configurations": [
     {
       "name": "railpoint-api",
-      "runtimeExecutable": ".venv/bin/uvicorn",
-      "runtimeArgs": ["backend.app.main:app", "--port", "8000"],
+      "runtimeExecutable": "/Users/harishikjamwal/Documents/Failure Prediction for Railway Point Switch Machines./.venv/bin/python",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "backend.app.main:app",
+        "--port",
+        "8000",
+        "--app-dir",
+        "/Users/harishikjamwal/Documents/Failure Prediction for Railway Point Switch Machines."
+      ],
       "port": 8000
     },
     {
       "name": "railpoint-web",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "runtimeExecutable": "/usr/local/bin/npm",
+      "runtimeArgs": [
+        "--prefix",
+        "/Users/harishikjamwal/Documents/Failure Prediction for Railway Point Switch Machines./frontend",
+        "run",
+        "dev"
+      ],
       "port": 5173
     }
   ]

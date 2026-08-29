@@ -76,7 +76,7 @@ The 2024 code got a 34-defect audit; it would be dishonest not to audit the
 replacement to the same standard. These were found by an adversarial multi-agent
 review of the rebuilt codebase, then verified individually against the source.
 
-Eighteen confirmed. Three of them meant a published claim was false, and one
+Twenty confirmed. Three of them meant a published claim was false, and one
 had been silently corrupting this session's own results.
 
 | ID | Severity | File | Defect | Fix |
@@ -98,6 +98,8 @@ had been silently corrupting this session's own results.
 | RP-16 | high | `backend/app/services/inference.py` | `calibration.npz` was loaded unconditionally *before* the fallback check, so the conformal qhat and Mahalanobis statistics calibrated on the encoder were applied to the linear probe. The probe scores on a different scale and produces no embedding at all, so this voided the coverage guarantee rather than transferring it. | Calibration is loaded only when the encoder is actually serving. Regression-tested. |
 | RP-17 | high | `backend/app/services/inference.py` | `rul_invert` is `expm1(...).clamp(min=0)` — bounded below only. `expm1` overflows to `+inf` for any float32 logit above ~88, and `inf`/`NaN` is not valid JSON, so it would 500 `/api/machines` and corrupt the WebSocket frame. | Non-finite RUL is returned as `None`. |
 | RP-18 | high | `backend/app/services/stream.py` | Every warning/critical throw appended a new alert with no dedup. A machine past the symptom threshold raises the same condition on *every* subsequent throw, so one degrading machine floods the 200-entry deque and evicts alerts an operator has already acknowledged — losing their triage work. | Alerts collapse per (machine, fault) while unresolved, carrying a `count` and `last_ts`; a warning that escalates to critical reopens. Regression-tested against eviction. |
+| RP-19 | high | `frontend/src/App.tsx` | The base data (`machines`, `events`, `alerts`) was fetched exactly once at mount with no retry. The API loads torch and the model weights and takes ~25 s to start, so opening the dashboard first left the schematic and fleet table **permanently empty** — while the WebSocket connected, the counters updated from `/api/stats`, and the header claimed **"Live"** over a blank schematic. Only a manual reload fixed it. | Retry with backoff until it succeeds; the header shows "Waiting for the API…" until the base data lands, so it cannot claim Live over nothing. Verified by stopping the API, loading the page, and restarting it — recovery is automatic with no reload. |
+| RP-20 | medium | `.claude/launch.json` | Every path was relative. The preview launcher runs with a working directory it cannot resolve (`getcwd: cannot access parent directories`) because the project folder contains spaces and ends in a period, so both servers failed with `Operation not permitted`. | Absolute paths; the API runs as `python -m uvicorn` with an explicit `--app-dir` instead of depending on the working directory. |
 | RP-09 | medium | `ml/pmdlib/train/pipeline.py` | Conformal calibration is fitted on the same `val` split used for early stopping and checkpoint selection, breaking the exchangeability the coverage guarantee rests on. | Needs a dedicated calibration split. *(pending)* |
 
 ## Findings recorded but not yet resolved
