@@ -11,53 +11,67 @@
   --font-sans: "IBM Plex Sans", "IBM Plex Sans KR", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
 
-  --color-bg: oklch(0.16 0.012 250);
-  --color-surface-1: oklch(0.20 0.014 250);
-  --color-surface-2: oklch(0.24 0.016 250);
-  --color-surface-3: oklch(0.285 0.018 250);
-  --color-line: oklch(0.34 0.018 250);
-  --color-line-strong: oklch(0.46 0.02 250);
-  --color-ink: oklch(0.96 0.005 250);
-  --color-ink-dim: oklch(0.74 0.012 250);
+  --color-bg: oklch(0.145 0.014 250);
+  --color-surface-1: oklch(0.192 0.016 250);
+  --color-surface-2: oklch(0.232 0.018 250);
+  --color-surface-3: oklch(0.278 0.020 250);
+  --color-line: oklch(0.31 0.018 250);
+  --color-line-strong: oklch(0.44 0.022 250);
+  --color-ink: oklch(0.97 0.004 250);
+  --color-ink-dim: oklch(0.755 0.012 250);
   /* 0.58 measured 4.22:1 against surface-1, below the 4.5 AA floor.
      This token carries labels and metadata, so it has to pass. */
-  --color-ink-faint: oklch(0.635 0.014 250);
+  --color-ink-faint: oklch(0.645 0.014 250);
 
-  --color-normal: oklch(0.74 0.15 155);
-  --color-reverse: oklch(0.80 0.14 75);
-  --color-transit: oklch(0.74 0.12 230);
-  --color-fault: oklch(0.66 0.20 25);
-  --color-degraded: oklch(0.77 0.16 55);
-  --color-unknown: oklch(0.56 0.02 250);
+  /* Raised chroma over the first pass: at 0.15 these read as grey-green and
+     grey-amber on a dark ground, and a state colour that does not register at a
+     glance is not doing its job on a safety surface. */
+  --color-normal: oklch(0.78 0.19 156);
+  --color-reverse: oklch(0.83 0.17 78);
+  --color-transit: oklch(0.76 0.15 232);
+  --color-fault: oklch(0.68 0.24 25);
+  --color-degraded: oklch(0.79 0.19 56);
+  --color-unknown: oklch(0.55 0.02 250);
 
+  /* Built-in CSS easings are too weak to read as intentional. */
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
 :root {
   color-scheme: dark;
-  --grid: oklch(0.30 0.016 250);
+  --grid: oklch(0.265 0.016 250);
+  /* Translucent chrome. Content scrolls under the header rather than being
+     walled off by an opaque strip. */
+  --chrome: oklch(0.192 0.016 250 / 0.72);
+  --chrome-edge: oklch(1 0 0 / 0.06);
+  --shadow-hero: 0 1px 0 0 oklch(1 0 0 / 0.04), 0 12px 32px -12px oklch(0 0 0 / 0.55);
 }
 
 /* Light theme. Defined in full rather than inverted — an inverted dark palette
    loses the contrast relationships the state colours depend on. */
 html.light {
   color-scheme: light;
-  --color-bg: oklch(0.97 0.004 250);
+  --color-bg: oklch(0.965 0.004 250);
   --color-surface-1: oklch(1 0 0);
-  --color-surface-2: oklch(0.965 0.005 250);
-  --color-surface-3: oklch(0.93 0.008 250);
-  --color-line: oklch(0.88 0.008 250);
-  --color-line-strong: oklch(0.74 0.012 250);
-  --color-ink: oklch(0.22 0.015 250);
-  --color-ink-dim: oklch(0.44 0.015 250);
-  --color-ink-faint: oklch(0.52 0.014 250);
-  --color-normal: oklch(0.52 0.15 155);
-  --color-reverse: oklch(0.58 0.14 75);
-  --color-transit: oklch(0.52 0.15 250);
-  --color-fault: oklch(0.53 0.21 25);
-  --color-degraded: oklch(0.60 0.16 55);
+  --color-surface-2: oklch(0.972 0.005 250);
+  --color-surface-3: oklch(0.935 0.008 250);
+  --color-line: oklch(0.885 0.008 250);
+  --color-line-strong: oklch(0.72 0.012 250);
+  --color-ink: oklch(0.20 0.015 250);
+  --color-ink-dim: oklch(0.43 0.015 250);
+  --color-ink-faint: oklch(0.515 0.014 250);
+  --color-normal: oklch(0.50 0.16 156);
+  --color-reverse: oklch(0.56 0.15 78);
+  --color-transit: oklch(0.50 0.16 252);
+  --color-fault: oklch(0.52 0.22 25);
+  --color-degraded: oklch(0.58 0.17 56);
   --color-unknown: oklch(0.62 0.02 250);
-  --grid: oklch(0.90 0.006 250);
+  --grid: oklch(0.905 0.006 250);
+  --chrome: oklch(1 0 0 / 0.75);
+  --chrome-edge: oklch(0 0 0 / 0.06);
+  --shadow-hero: 0 1px 0 0 oklch(1 0 0 / 0.8), 0 12px 28px -14px oklch(0 0 0 / 0.18);
 }
 
 html, body, #root { height: 100%; }
@@ -69,10 +83,51 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
+
+/* ── Type scale ───────────────────────────────────────────────────────────
+   Tracking is size-specific, never one value for every size: large text reads
+   too loose as it grows and wants negative tracking, small text wants a little
+   positive. Leading moves inversely to size. Hierarchy comes from weight, size
+   and leading as a set — not size alone.
+   ───────────────────────────────────────────────────────────────────────── */
+.t-display {
+  font-size: 30px; line-height: 1.0; font-weight: 600; letter-spacing: -0.022em;
+  font-variant-numeric: tabular-nums; font-family: var(--font-mono);
+}
+.t-metric {
+  font-size: 19px; line-height: 1.1; font-weight: 600; letter-spacing: -0.014em;
+  font-variant-numeric: tabular-nums; font-family: var(--font-mono);
+}
+.t-title    { font-size: 15px; line-height: 1.3;  font-weight: 600; letter-spacing: -0.008em; }
+.t-body     { font-size: 13px; line-height: 1.5;  letter-spacing: 0; }
+.t-label    { font-size: 12px; line-height: 1.35; letter-spacing: 0.004em; }
+.t-micro    { font-size: 10.5px; line-height: 1.2; font-weight: 600;
+              letter-spacing: 0.085em; text-transform: uppercase; }
 
 /* Every numeric value is monospaced and tabular so digits never reflow. */
 .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ── Materials ───────────────────────────────────────────────────────────── */
+.chrome {
+  background: var(--chrome);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid var(--chrome-edge);
+}
+/* Scroll edge effect rather than a hard 1px rule: content fades where it meets
+   floating chrome, only where the two actually overlap. */
+.edge-fade {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 10px);
+}
+
+/* ── Interaction ─────────────────────────────────────────────────────────── */
+/* Buttons must feel like the interface heard the press. Feedback on
+   pointer-down, never on release. */
+.press { transition: transform 130ms var(--ease-out-strong), background-color 130ms var(--ease-out-strong); }
+.press:active { transform: scale(0.97); }
 
 /* Focus rings are never removed — only made deliberate. */
 :where(a, button, [tabindex], input, select, summary):focus-visible {
@@ -81,15 +136,17 @@ body {
   border-radius: 3px;
 }
 
-::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: var(--color-line);
   border-radius: 6px;
-  border: 2px solid var(--color-bg);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover { background: var(--color-line-strong); }
+::-webkit-scrollbar-thumb:hover { background: var(--color-line-strong); background-clip: padding-box; }
 
+/* ── Motion ──────────────────────────────────────────────────────────────── */
 /* The waveform draws along its own sample index, so the animation *is* the
    throw replaying — not decoration. */
 @keyframes trace-in { from { stroke-dashoffset: var(--len); } to { stroke-dashoffset: 0; } }
@@ -103,8 +160,19 @@ body {
 @keyframes attention { 0% { box-shadow: 0 0 0 0 currentColor; opacity: 1 } 100% { box-shadow: 0 0 0 14px transparent; opacity: 1 } }
 .attention { animation: attention 900ms var(--ease-out-quint) 1 both; }
 
-@keyframes rise { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
-.rise { animation: rise 180ms var(--ease-out-quint) both; }
+/* Never from scale(0) — nothing in the real world appears from nothing. */
+@keyframes rise { from { opacity: 0; transform: translateY(5px) scale(0.99) } to { opacity: 1; transform: none } }
+.rise { animation: rise 200ms var(--ease-out-strong) both; }
+
+/* Staggered entry for lists. Short delays only: long ones make the interface
+   feel slow, and stagger is decoration that must never block interaction. */
+.stagger > * { animation: rise 200ms var(--ease-out-strong) both; }
+.stagger > *:nth-child(1) { animation-delay: 0ms }
+.stagger > *:nth-child(2) { animation-delay: 26ms }
+.stagger > *:nth-child(3) { animation-delay: 52ms }
+.stagger > *:nth-child(4) { animation-delay: 78ms }
+.stagger > *:nth-child(5) { animation-delay: 104ms }
+.stagger > *:nth-child(n+6) { animation-delay: 130ms }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -113,4 +181,10 @@ body {
     transition-duration: 0.001ms !important;
   }
   .trace-in { stroke-dasharray: none; }
+  .press:active { transform: none; }
+}
+
+/* Translucency is a preference, not a given. */
+@media (prefers-reduced-transparency: reduce) {
+  .chrome { background: var(--color-surface-1); backdrop-filter: none; -webkit-backdrop-filter: none; }
 }

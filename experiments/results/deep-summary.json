@@ -1,35 +1,35 @@
 {
   "params": 515217,
-  "best_epoch": 0,
+  "best_epoch": 26,
   "test": {
     "model": "PointMachineNet",
-    "accuracy": 0.8456,
-    "balanced_acc": 0.6072,
-    "macro_f1": 0.5803,
-    "weighted_f1": 0.8293
+    "accuracy": 0.9777,
+    "balanced_acc": 0.9143,
+    "macro_f1": 0.9289,
+    "weighted_f1": 0.9756
   },
   "conformal": {
     "alpha": 0.1,
-    "qhat": 0.7604,
-    "coverage": 0.8349,
-    "mean_set_size": 1.009
+    "qhat": 0.0112,
+    "coverage": 0.8931,
+    "mean_set_size": 0.895
   },
   "rul": {
-    "n": 3292,
-    "rmse": 180.03,
-    "mae": 141.58,
-    "interval_halfwidth": 280.5,
-    "coverage": 0.8712
+    "n": 1567,
+    "rmse": 145.27,
+    "mae": 110.97,
+    "interval_halfwidth": 240.0,
+    "coverage": 0.8979
   },
   "anomaly": {
-    "roc_auc": 0.9738,
-    "positive_rate": 0.2918
+    "roc_auc": 0.994,
+    "positive_rate": 0.25
   },
   "acceptance": {
-    "diagnostic_correct": 2,
+    "diagnostic_correct": 1,
     "diagnostic_total": 3,
-    "all_correct": 6,
+    "all_correct": 5,
     "passed": false,
-    "expected_in_conformal_set": 7
+    "expected_in_conformal_set": 5
   }
 }

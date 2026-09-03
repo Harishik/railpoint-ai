@@ -8,22 +8,53 @@ import { Sparkline } from './Sparkline'
  * shrunk to its header by a taller sibling in the same flex column, which is
  * how the schematic and waveform ended up 47px tall.
  */
-export function Card({ title, aside, children, className = '', scroll = false }: {
+export function Card({ title, aside, children, className = '', scroll = false, tone = 'panel' }: {
   title: string
   aside?: React.ReactNode
   children: React.ReactNode
   className?: string
+  /**
+   * `scroll` decides whether the body scrolls inside the card or the card sizes
+   * to its content. It matters: a card whose body is `flex-1 overflow-auto` can
+   * be shrunk to its header by a taller sibling in the same flex column, which
+   * is how the schematic and waveform ended up 47px tall.
+   */
   scroll?: boolean
+  /**
+   * Surface tier. Giving every panel the same border and background made the
+   * console read as undifferentiated boxes — the waveform, which is the thing
+   * an operator is actually reading, carried no more weight than a metadata
+   * list. Elevation and padding now encode importance.
+   */
+  tone?: 'hero' | 'panel' | 'quiet'
 }) {
+  const surface =
+    tone === 'hero'
+      ? 'bg-surface-1 border border-line/70 rounded-xl'
+      : tone === 'quiet'
+        ? 'bg-transparent'
+        : 'bg-surface-1 border border-line rounded-lg'
+
   return (
     <section
-      className={`flex flex-col rounded-lg border border-line bg-surface-1 ${scroll ? 'min-h-0' : 'shrink-0'} ${className}`}
+      className={`flex flex-col ${surface} ${scroll ? 'min-h-0' : 'shrink-0'} ${className}`}
+      style={tone === 'hero' ? { boxShadow: 'var(--shadow-hero)' } : undefined}
     >
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-3 py-2">
-        <h2 className="text-[11px] font-semibold uppercase tracking-[0.09em] text-ink-faint">{title}</h2>
+      <header
+        className={`flex shrink-0 items-center justify-between gap-3 ${
+          tone === 'quiet' ? 'pb-2' : tone === 'hero' ? 'px-4 pb-2.5 pt-3' : 'px-3 py-2'
+        }`}
+      >
+        <h2 className={tone === 'hero' ? 't-title' : 't-micro text-ink-faint'}>{title}</h2>
         {aside}
       </header>
-      <div className={scroll ? 'min-h-0 flex-1 overflow-auto p-3' : 'p-3'}>{children}</div>
+      <div
+        className={`${scroll ? 'min-h-0 flex-1 overflow-auto' : ''} ${
+          tone === 'quiet' ? '' : tone === 'hero' ? 'px-4 pb-4' : 'px-3 pb-3'
+        }`}
+      >
+        {children}
+      </div>
     </section>
   )
 }
@@ -37,44 +68,62 @@ export function StatusBar({ stats, connected, notice, theme, onTheme }: {
   theme: 'dark' | 'light'
   onTheme: () => void
 }) {
+  // The question this bar answers is "does anything need me right now", not
+  // "what are the seven counters". Attention count leads; the rest supports it.
+  const attention = stats ? stats.warning + stats.critical : 0
+  const worst = !stats || stats.critical > 0 ? 'fault' : attention > 0 ? 'degraded' : 'normal'
+  const worstColour = `var(--color-${worst})`
+
   return (
-    <header className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-line bg-surface-1 px-4 py-2.5">
+    <header className="chrome sticky top-0 z-20 flex shrink-0 flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5">
       <div className="flex items-baseline gap-2.5">
-        <span className="text-[15px] font-semibold tracking-tight">RailPoint&#8202;·&#8202;AI</span>
-        <span className="hidden text-[11px] text-ink-faint sm:inline">
+        <span className="t-title">RailPoint&#8202;·&#8202;AI</span>
+        <span className="t-label hidden text-ink-faint md:inline">
           철도 선로전환기 · Point machine operations
         </span>
       </div>
 
-      <div className="flex items-center gap-1.5" title={connected ? 'Live feed connected' : 'Reconnecting'}>
-        <span
-          className="h-1.5 w-1.5 rounded-full"
-          style={{ background: connected ? 'var(--color-normal)' : 'var(--color-degraded)' }}
-        />
-        <span className="text-[12px] text-ink-dim">
-          {notice ?? (connected ? 'Live' : 'Reconnecting')}
-        </span>
-      </div>
-
       {stats && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]">
-          <Stat label="Machines" value={stats.machines} />
-          <Stat label="Normal" value={stats.normal} colour="var(--color-normal)" />
-          <Stat label="Unsure" value={stats.info} colour="var(--color-transit)" />
-          <Stat label="Warning" value={stats.warning} colour="var(--color-degraded)" />
-          <Stat label="Critical" value={stats.critical} colour="var(--color-fault)" />
-          <Stat label="Events" value={stats.events_streamed} />
-          <Stat label="Open alerts" value={stats.open_alerts} />
+        <div className="flex items-center gap-3">
+          {/* The headline. One number, at display size, coloured by the worst
+              state present — readable across a control room. */}
+          <div className="flex items-baseline gap-1.5">
+            <span className="t-display" style={{ color: attention ? worstColour : 'var(--color-ink)' }}>
+              {attention === 0 ? stats.normal : attention}
+            </span>
+            <span className="t-label text-ink-dim">
+              {attention === 0 ? 'all clear' : attention === 1 ? 'needs attention' : 'need attention'}
+            </span>
+          </div>
+
+          {/* Fleet distribution as one continuous bar. Five separate counters
+              made the reader do the comparison; a bar shows the proportion
+              directly, and the counts stay available on hover. */}
+          <FleetBar stats={stats} />
         </div>
       )}
 
       <div className="ml-auto flex items-center gap-3">
+        <div className="flex items-center gap-1.5" title={connected ? 'Live feed connected' : 'Reconnecting'}>
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{
+              background: notice ? 'var(--color-degraded)' : connected ? 'var(--color-normal)' : 'var(--color-degraded)',
+              boxShadow: !notice && connected ? '0 0 0 3px color-mix(in oklch, var(--color-normal) 22%, transparent)' : 'none',
+            }}
+          />
+          <span className="t-label text-ink-dim">
+            {notice ?? (connected ? 'Live' : 'Reconnecting')}
+          </span>
+        </div>
+
         {stats && (
           <span
-            className="rounded border px-1.5 py-0.5 text-[11px]"
+            className="t-label rounded-full border px-2 py-0.5"
             style={{
-              borderColor: stats.model_source === 'trained' ? 'var(--color-normal)' : 'var(--color-degraded)',
+              borderColor: `color-mix(in oklch, ${stats.model_source === 'trained' ? 'var(--color-normal)' : 'var(--color-degraded)'} 45%, transparent)`,
               color: stats.model_source === 'trained' ? 'var(--color-normal)' : 'var(--color-degraded)',
+              background: `color-mix(in oklch, ${stats.model_source === 'trained' ? 'var(--color-normal)' : 'var(--color-degraded)'} 10%, transparent)`,
             }}
             title={
               stats.model_source === 'trained'
@@ -87,7 +136,7 @@ export function StatusBar({ stats, connected, notice, theme, onTheme }: {
         )}
         <button
           onClick={onTheme}
-          className="rounded border border-line px-2 py-1 text-[12px] text-ink-dim transition-colors duration-150 hover:border-line-strong hover:text-ink"
+          className="press t-label rounded-md border border-line px-2 py-1 text-ink-dim hover:border-line-strong hover:text-ink"
           aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
         >
           {theme === 'dark' ? 'Light' : 'Dark'}
@@ -97,12 +146,40 @@ export function StatusBar({ stats, connected, notice, theme, onTheme }: {
   )
 }
 
-function Stat({ label, value, colour }: { label: string; value: number; colour?: string }) {
+/** Fleet composition as a single proportional bar. */
+function FleetBar({ stats }: { stats: Stats }) {
+  const segments = [
+    { key: 'normal', n: stats.normal, colour: 'var(--color-normal)', label: 'Normal' },
+    { key: 'info', n: stats.info, colour: 'var(--color-transit)', label: 'Unsure' },
+    { key: 'warning', n: stats.warning, colour: 'var(--color-degraded)', label: 'Warning' },
+    { key: 'critical', n: stats.critical, colour: 'var(--color-fault)', label: 'Critical' },
+  ].filter((s) => s.n > 0)
+  const total = Math.max(1, segments.reduce((a, s) => a + s.n, 0))
+
   return (
-    <span className="flex items-baseline gap-1.5">
-      <span className="text-ink-faint">{label}</span>
-      <span className="num font-medium" style={colour ? { color: colour } : undefined}>{value}</span>
-    </span>
+    <div className="hidden items-center gap-2.5 sm:flex">
+      <div
+        className="flex h-1.5 w-28 overflow-hidden rounded-full bg-surface-3"
+        role="img"
+        aria-label={segments.map((s) => `${s.n} ${s.label}`).join(', ')}
+      >
+        {segments.map((s) => (
+          <span
+            key={s.key}
+            title={`${s.label}: ${s.n}`}
+            style={{
+              width: `${(s.n / total) * 100}%`,
+              background: s.colour,
+              transition: 'width 420ms var(--ease-out-quint)',
+            }}
+          />
+        ))}
+      </div>
+      <span className="t-label text-ink-faint">
+        <span className="num text-ink-dim">{stats.machines}</span> machines ·{' '}
+        <span className="num text-ink-dim">{stats.events_streamed}</span> throws
+      </span>
+    </div>
   )
 }
 
@@ -157,38 +234,63 @@ export function AlertList({ alerts, onAction }: {
 }) {
   if (!alerts.length) {
     return (
-      <p className="py-6 text-center text-[12px] text-ink-faint">
+      <p className="t-label py-8 text-center text-ink-faint">
         No alerts. The fleet is operating within limits.
       </p>
     )
   }
   return (
-    <ul className="flex flex-col gap-1.5">
-      {alerts.map((a) => (
-        <li key={a.id} className="rise rounded-md border border-line bg-surface-2 px-2.5 py-2">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: SEVERITY_COLOR[a.severity] }} />
-                <span className="num text-[12px] font-medium">{a.machine_id}</span>
-                <span className="text-[12px] text-ink-dim">{faultLabel(a.fault)}</span>
+    <ul className="stagger flex flex-col gap-1.5">
+      {alerts.map((a) => {
+        const triaged = a.state !== 'open'
+        return (
+          <li
+            key={a.id}
+            // A severity rail down the leading edge reads faster than a dot and
+            // survives peripheral vision, which is how an alert list is
+            // actually scanned in a control room.
+            className="relative overflow-hidden rounded-md bg-surface-2 pl-2.5 pr-2 py-2 transition-opacity duration-200"
+            style={{ opacity: triaged ? 0.62 : 1 }}
+          >
+            <span
+              aria-hidden
+              className="absolute inset-y-0 left-0 w-[3px]"
+              style={{ background: SEVERITY_COLOR[a.severity] }}
+            />
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="flex items-baseline gap-1.5">
+                  <span className="num t-label font-semibold text-ink">{a.machine_id}</span>
+                  <span className="t-label truncate text-ink-dim">{faultLabel(a.fault)}</span>
+                  {a.count > 1 && (
+                    <span
+                      className="num shrink-0 rounded-full bg-surface-3 px-1.5 text-[10px] text-ink-faint"
+                      title={`Raised ${a.count} times on this machine`}
+                    >
+                      ×{a.count}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-0.5 truncate text-[11px] text-ink-faint">
+                  {a.fault_ko} · {ago(a.last_ts ?? a.ts)} ago
+                  {triaged && <span className="text-ink-dim"> · {a.state}</span>}
+                </div>
               </div>
-              <div className="mt-0.5 truncate text-[11px] text-ink-faint">{a.fault_ko} · {ago(a.ts)} ago</div>
+              <div className="flex shrink-0 gap-1">
+                {a.state === 'open' && (
+                  <ActionButton onClick={() => onAction(a.id, 'acknowledge')}>Ack</ActionButton>
+                )}
+                {a.state !== 'resolved' && (
+                  <ActionButton onClick={() => onAction(a.id, 'resolve')}>Resolve</ActionButton>
+                )}
+                {a.state === 'resolved' && (
+                  <ActionButton onClick={() => onAction(a.id, 'reopen')}>Undo</ActionButton>
+                )}
+              </div>
             </div>
-            <div className="flex shrink-0 gap-1">
-              {a.state === 'open' && (
-                <ActionButton onClick={() => onAction(a.id, 'acknowledge')}>Ack</ActionButton>
-              )}
-              {a.state !== 'resolved' && (
-                <ActionButton onClick={() => onAction(a.id, 'resolve')}>Resolve</ActionButton>
-              )}
-              {a.state === 'resolved' && (
-                <ActionButton onClick={() => onAction(a.id, 'reopen')}>Undo</ActionButton>
-              )}
-            </div>
-          </div>
-        </li>
-      ))}
+          </li>
+        )
+      })}
     </ul>
   )
 }
@@ -197,7 +299,7 @@ function ActionButton({ children, onClick }: { children: React.ReactNode; onClic
   return (
     <button
       onClick={onClick}
-      className="rounded border border-line px-1.5 py-0.5 text-[11px] text-ink-dim transition-colors duration-150 hover:border-line-strong hover:text-ink"
+      className="press rounded border border-line px-1.5 py-0.5 text-[11px] text-ink-dim hover:border-line-strong hover:bg-surface-3 hover:text-ink"
     >
       {children}
     </button>
@@ -214,11 +316,26 @@ export function EventList({ events, selected, onSelect }: {
           <button
             onClick={() => onSelect(e.id)}
             aria-current={selected === e.id}
-            className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[12px] transition-colors duration-150 hover:bg-surface-2 aria-[current=true]:bg-surface-2"
+            className={`t-label flex w-full items-center gap-2 rounded px-1.5 py-1 text-left transition-colors duration-150 hover:bg-surface-2 aria-[current=true]:bg-surface-2 ${
+              e.prediction.severity === 'normal' ? 'text-ink-faint' : 'text-ink'
+            }`}
           >
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: SEVERITY_COLOR[e.prediction.severity] }} />
-            <span className="num shrink-0 text-ink-dim">{e.machine_id}</span>
-            <span className="truncate">{faultLabel(e.prediction.fault)}</span>
+            {/* A feed where every row shouts is a feed nobody reads. Normal
+                throws are the overwhelming majority and recede to a hairline;
+                anything else keeps its full-strength dot and text. */}
+            <span
+              className="shrink-0 rounded-full"
+              style={{
+                background: SEVERITY_COLOR[e.prediction.severity],
+                width: e.prediction.severity === 'normal' ? 3 : 6,
+                height: e.prediction.severity === 'normal' ? 3 : 6,
+                opacity: e.prediction.severity === 'normal' ? 0.5 : 1,
+              }}
+            />
+            <span className="num shrink-0">{e.machine_id}</span>
+            <span className={`truncate ${e.prediction.severity === 'normal' ? '' : 'font-medium'}`}>
+              {faultLabel(e.prediction.fault)}
+            </span>
             <span className="num ml-auto shrink-0 text-ink-faint">{ago(e.ts)}</span>
           </button>
         </li>

@@ -154,7 +154,7 @@ export function Waveform({ event, hoveredFeature }: Props) {
                 })
               }
               aria-pressed={!off}
-              className="group flex items-center gap-1.5 rounded-md border px-2 py-1 text-[12px] transition-colors duration-150"
+              className="press group flex items-center gap-1.5 rounded-md border px-2 py-1 text-[12px]"
               style={{
                 borderColor: off ? 'var(--color-line)' : CHANNEL_COLOR[ch.name],
                 color: off ? 'var(--color-ink-faint)' : 'var(--color-ink)',
@@ -163,7 +163,7 @@ export function Waveform({ event, hoveredFeature }: Props) {
             >
               <span className="h-0.5 w-3 rounded-full" style={{ background: off ? 'var(--color-line-strong)' : CHANNEL_COLOR[ch.name] }} />
               {CHANNEL_LABEL[ch.name] ?? ch.name}
-              <span className="num text-[11px] opacity-60">{ch.unit}</span>
+              <span className="num text-[11px] text-ink-dim">{ch.unit}</span>
             </button>
           )
         })}

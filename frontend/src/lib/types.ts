@@ -67,6 +67,10 @@ export interface Alert {
   message: string
   state: 'open' | 'acknowledged' | 'resolved'
   assignee: string | null
+  /** How many throws have raised this same condition on this machine. */
+  count: number
+  /** When it was last seen, as distinct from when it was first raised. */
+  last_ts: string | null
 }
 
 export interface Stats {

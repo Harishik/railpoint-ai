@@ -166,35 +166,44 @@ export function App() {
       </p>
       <StatusBar stats={stats} connected={connected} notice={bootError} theme={theme} onTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} />
 
-      <main id="console" className="grid flex-1 gap-3 overflow-auto p-3 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
-        <div className="flex flex-col gap-3">
+      <main id="console" className="grid flex-1 gap-4 overflow-auto p-4 lg:grid-cols-[minmax(0,1fr)_336px] lg:items-start">
+        <div className="flex flex-col gap-4">
           <Card
             title="Interlocking schematic"
             aside={
               selected ? (
-                <button onClick={() => setSelectedMachine(null)} className="text-[11px] text-ink-faint underline-offset-2 hover:underline">
+                <button onClick={() => setSelectedMachine(null)} className="press t-label rounded text-ink-faint underline-offset-2 hover:text-ink hover:underline">
                   clear filter · {selected.id}
                 </button>
               ) : (
-                <span className="text-[11px] text-ink-faint">click a machine, or use ← →</span>
+                <span className="t-label text-ink-faint">click a machine, or use ← →</span>
               )
             }
           >
-            <Schematic machines={machines} selected={selectedMachine} recent={recent}
-              onSelect={(id) => setSelectedMachine((cur) => (cur === id ? null : id))} />
+            <div className="mx-auto w-full max-w-[900px]">
+              <Schematic machines={machines} selected={selectedMachine} recent={recent}
+                onSelect={(id) => setSelectedMachine((cur) => (cur === id ? null : id))} />
+            </div>
           </Card>
 
           <Card
+            tone="hero"
             title={detail ? `Event ${detail.id} · ${detail.machine_id}` : 'Waveform'}
             aside={
               pred && (
-                <div className="flex items-center gap-2 text-[11px]">
-                  <span className="rounded px-1.5 py-0.5 font-medium"
-                    style={{ background: `color-mix(in oklch, ${SEVERITY_COLOR[pred.severity]} 18%, transparent)`, color: SEVERITY_COLOR[pred.severity] }}>
+                <div className="flex items-center gap-2.5">
+                  <span
+                    className="t-label rounded-full px-2.5 py-1 font-semibold"
+                    style={{
+                      background: `color-mix(in oklch, ${SEVERITY_COLOR[pred.severity]} 16%, transparent)`,
+                      color: SEVERITY_COLOR[pred.severity],
+                      boxShadow: `inset 0 0 0 1px color-mix(in oklch, ${SEVERITY_COLOR[pred.severity]} 35%, transparent)`,
+                    }}
+                  >
                     {pred.fault_en}
                   </span>
-                  <span className="text-ink-faint">{pred.fault_ko}</span>
-                  <span className="num text-ink-dim">{(pred.confidence * 100).toFixed(0)}%</span>
+                  <span className="t-label text-ink-faint">{pred.fault_ko}</span>
+                  <span className="t-metric text-ink">{(pred.confidence * 100).toFixed(0)}<span className="t-label text-ink-faint">%</span></span>
                 </div>
               )
             }
@@ -207,7 +216,7 @@ export function App() {
             )}
           </Card>
 
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             <Card title="Fleet" scroll className="max-h-[460px] min-h-[220px]">
               <FleetTable machines={machines} selected={selectedMachine} onSelect={(id) => setSelectedMachine((c) => (c === id ? null : id))} />
             </Card>
@@ -245,7 +254,7 @@ export function App() {
           </div>
         </div>
 
-        <aside className="flex flex-col gap-3">
+        <aside className="flex flex-col gap-4">
           <Card title="Alerts" scroll className="max-h-[38vh]"
             aside={<span className="num text-[11px] text-ink-faint">{openAlerts.length} open</span>}>
             <AlertList alerts={alerts.slice(0, 24)} onAction={onAlertAction} />

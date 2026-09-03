@@ -65,6 +65,15 @@ inverted light values.
 
 ## 3. Typography — chosen for a reason
 
+**Tracking is size-specific; a single `letter-spacing` is wrong somewhere.**
+The scale is defined as classes (`t-display`, `t-metric`, `t-title`, `t-body`,
+`t-label`, `t-micro`) that set size, weight, leading and tracking *as a set* —
+negative tracking on display sizes, which read too loose as they grow, and
+positive on the 10.5px micro label. Hierarchy comes from all four together, never
+from size alone. Before this the whole console sat between 11 and 13 px, which is
+why it read as flat.
+
+
 **IBM Plex Sans** (UI) + **IBM Plex Sans KR** (Korean) + **IBM Plex Mono** (all data).
 
 This is not a default. Three reasons it is the right face here:
@@ -112,6 +121,13 @@ cause reflow.
 ---
 
 ## 5. Layout
+
+**Surfaces are tiered, not uniform.** Giving every panel the same border and
+background made the console read as undifferentiated boxes — the waveform, which
+is the thing an operator is actually reading, carried no more visual weight than
+a metadata list. `Card` has three tones: `hero` (elevated, larger padding, title
+at `t-title`), `panel` (default), and `quiet` (no chrome at all). Importance is
+encoded in elevation and padding, and only one region per view is `hero`.
 
 Schematic-first. The primary surface is an **SVG interlocking diagram** — point machines
 as nodes on a track layout, coloured by state — because that is how signalling staff

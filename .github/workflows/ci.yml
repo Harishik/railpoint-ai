@@ -51,5 +51,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '22', cache: npm, cache-dependency-path: frontend/package-lock.json }
       - run: npm ci
-      - run: npx tsc --noEmit
+      # `tsc --noEmit` against a solution-style tsconfig ("files": [], only
+      # references) type-checks nothing and exits 0. `-b` builds the referenced
+      # projects and is the only form that actually reports errors here.
+      - run: npx tsc -b --force
       - run: npm run build
