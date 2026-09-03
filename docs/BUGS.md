@@ -76,7 +76,7 @@ The 2024 code got a 34-defect audit; it would be dishonest not to audit the
 replacement to the same standard. These were found by an adversarial multi-agent
 review of the rebuilt codebase, then verified individually against the source.
 
-Twenty-four confirmed. Three of them meant a published claim was false, and one
+Twenty-five confirmed. Three of them meant a published claim was false, and one
 had been silently corrupting this session's own results.
 
 | ID | Severity | File | Defect | Fix |
@@ -104,6 +104,7 @@ had been silently corrupting this session's own results.
 | RP-22 | medium | `frontend/src/components/Waveform.tsx` | The channel-unit suffix in the legend used `opacity-60` over `--color-ink`, measuring **1.92:1** in dark and 3.01:1 in light — both under the 4.5 floor. De-emphasis carried in alpha silently defeats a token chosen to pass. | Uses `--color-ink-dim` at full opacity. Measured audit now reports zero contrast failures in both themes. |
 | RP-23 | **high** | `backend/app/services/inference.py` | When the trained encoder was serving, `_attribute` fell through to `contribution = value` — the "contribution" was **literally the raw measurement**. The ranking was therefore a function of each feature's *units*: throw duration, in hundreds of samples, outranked every binary indicator on every event regardless of relevance. The docstring claimed a "deviation-magnitude proxy"; no deviation was computed. Invisible in the UI because the evidence row showed only one number. | Contribution is now a signed deviation in standard deviations from healthy operation, using per-feature statistics over NORMAL training events persisted into `calibration.npz`. With no reference available it reports 0 rather than inventing a number. |
 | RP-24 | medium | `frontend/src/components/Evidence.tsx` | The bar length encoded *contribution* while the only number on the row was the *measured value*, so a full-width bar sat beside "170.00" and read as if the bar meant 170. Two quantities, one label. This is what hid RP-23. | Measured and Contribution are separate labelled columns, with a legend stating that bar length is the contribution and which direction supports the diagnosis. |
+| RP-25 | high | `frontend/src/pages/Diagnostics.tsx` | With no event in the URL the page resolved its id as `events[0]?.id`, so **every arriving throw changed the id**, refired the fetch effect and called `setDetail(null)` — blanking to a skeleton and remounting the chart every three seconds. A surface meant for studying one waveform could not be read at all. | Live-follow is now opt-in ("Hold" by default); the page lands on whatever was latest when opened and holds. New throws are offered as an `N newer throws · show latest` affordance rather than forced. The refetch no longer clears `detail`, so the previous trace stays up until the new one is ready. Verified over 5 stream ticks: one distinct event, skeleton never shown, chart path unchanged. |
 | RP-09 | medium | `ml/pmdlib/train/pipeline.py` | Conformal calibration is fitted on the same `val` split used for early stopping and checkpoint selection, breaking the exchangeability the coverage guarantee rests on. | Needs a dedicated calibration split. *(pending)* |
 
 ## Findings recorded but not yet resolved

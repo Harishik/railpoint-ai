@@ -22,15 +22,35 @@ export function Diagnostics() {
   const navigate = useNavigate()
   const [detail, setDetail] = useState<EventDetail | null>(null)
   const [hovered, setHovered] = useState<string | null>(null)
+  // Following the live feed is opt-in. This is a reading surface: an operator
+  // opens it to study one throw, and a page that swaps the waveform out every
+  // three seconds cannot be read at all.
+  const [follow, setFollow] = useState(false)
+  const [pinned, setPinned] = useState<string | null>(null)
 
-  // With no event in the URL, fall through to the most recent one rather than
-  // showing an empty page — the common case is "show me what just happened".
-  const id = eventId ?? events[0]?.id
+  const latestId = events[0]?.id
+
+  // With no event in the URL, land on whatever was latest when the page opened
+  // and then hold still, rather than tracking the head of the stream.
+  useEffect(() => {
+    if (!eventId && !pinned && latestId) setPinned(latestId)
+  }, [eventId, pinned, latestId])
+
+  const id = eventId ?? (follow ? latestId : (pinned ?? latestId))
+
+  // How many throws have arrived since the one on screen — offered, not forced.
+  const newer = (() => {
+    if (eventId || follow || !pinned) return 0
+    const at = events.findIndex((e) => e.id === pinned)
+    return at > 0 ? at : 0
+  })()
 
   useEffect(() => {
     if (!id) return
     let live = true
-    setDetail(null)
+    // Deliberately not clearing `detail` first. Blanking to a skeleton on every
+    // refetch is what made this page appear to reload rather than update; the
+    // previous trace stays up until the new one is ready to replace it.
     void api.event(id).then((d) => { if (live) setDetail(d) }).catch(() => {})
     return () => { live = false }
   }, [id])
@@ -43,7 +63,38 @@ export function Diagnostics() {
       ko="파형 분석"
       lede={detail ? `Event ${detail.id} on ${detail.machine_id}, commanded to ${detail.direction}.` : undefined}
       actions={
-        pred && (
+        <div className="flex flex-wrap items-center gap-2.5">
+          {!eventId && (
+            <button
+              onClick={() => { setFollow((f) => !f); if (!follow) setPinned(null) }}
+              aria-pressed={follow}
+              className="press t-label flex items-center gap-1.5 rounded-md border px-2 py-1"
+              style={{
+                borderColor: follow ? 'color-mix(in oklch, var(--color-normal) 45%, transparent)' : 'var(--color-line)',
+                color: follow ? 'var(--color-normal)' : 'var(--color-ink-dim)',
+              }}
+              title={follow ? 'Following the live feed' : 'Holding on one throw'}
+            >
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ background: follow ? 'var(--color-normal)' : 'var(--color-line-strong)' }}
+              />
+              {follow ? 'Following live' : 'Hold'}
+            </button>
+          )}
+          {newer > 0 && (
+            <button
+              onClick={() => setPinned(latestId ?? null)}
+              className="press t-label rounded-md px-2 py-1"
+              style={{
+                background: 'color-mix(in oklch, var(--color-transit) 16%, transparent)',
+                color: 'var(--color-transit)',
+              }}
+            >
+              {newer} newer {newer === 1 ? 'throw' : 'throws'} · show latest
+            </button>
+          )}
+          {pred && (
           <div className="flex items-center gap-2.5">
             <span
               className="t-label rounded-full px-2.5 py-1 font-semibold"
@@ -58,7 +109,8 @@ export function Diagnostics() {
             <span className="t-label text-ink-faint">{pred.fault_ko}</span>
             <span className="t-metric">{(pred.confidence * 100).toFixed(0)}<span className="t-label text-ink-faint">%</span></span>
           </div>
-        )
+          )}
+        </div>
       }
     >
       <Section>
@@ -107,7 +159,7 @@ export function Diagnostics() {
             {events.slice(0, 30).map((e) => (
               <li key={e.id}>
                 <button
-                  onClick={() => navigate(`/events/${e.id}`)}
+                  onClick={() => { setFollow(false); setPinned(e.id); navigate(`/events/${e.id}`) }}
                   aria-current={e.id === id}
                   className={`press t-label flex items-center gap-1.5 rounded-md border px-2 py-1 ${
                     e.id === id ? 'border-line-strong bg-surface-3 text-ink' : 'border-line text-ink-dim hover:text-ink'
