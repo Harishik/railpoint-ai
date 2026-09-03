@@ -95,3 +95,22 @@ export type CopilotReply = {
   citations: string[]
   disclaimer: string
 }
+
+export interface ModelCard {
+  serving: { source: string; version: string; degraded: boolean }
+  summary: {
+    params: number
+    best_epoch: number
+    test: { model: string; accuracy: number; balanced_acc: number; macro_f1: number; weighted_f1: number }
+    conformal: { alpha: number; qhat: number; coverage: number; mean_set_size: number }
+    rul: { n: number; rmse: number; mae: number; interval_halfwidth: number; coverage: number }
+    anomaly: { roc_auc: number; positive_rate: number }
+    acceptance: {
+      diagnostic_correct: number; diagnostic_total: number
+      all_correct: number; passed: boolean; expected_in_conformal_set: number
+    }
+  } | null
+  metropt: Record<string, string | number> | null
+  acceptance: Record<string, string>[]
+  per_class: Record<string, string>[]
+}

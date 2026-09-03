@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import csv
+import json
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -155,6 +157,47 @@ async def alert_action(alert_id: str, action: str, assignee: str | None = None) 
                 a["assignee"] = assignee
             return a
     raise HTTPException(404, f"unknown alert {alert_id}")
+
+
+@app.get("/api/model")
+async def model_card() -> dict:
+    """The measured results behind whatever is currently serving.
+
+    Read from the experiment artefacts rather than restated in code, so the
+    console cannot drift from what the training run actually produced — a
+    dashboard quoting stale metrics is worse than one quoting none.
+    """
+    results = settings.artifacts_dir.parent / "results"
+
+    def read_json(name: str) -> dict | None:
+        path = results / name
+        if not path.exists():
+            return None
+        try:
+            return json.loads(path.read_text())
+        except (OSError, ValueError):
+            return None
+
+    acceptance: list[dict] = []
+    acc_path = results / "deep-acceptance.csv"
+    if acc_path.exists():
+        with acc_path.open(newline="") as fh:
+            acceptance = list(csv.DictReader(fh))
+
+    per_class: list[dict] = []
+    pc_path = results / "deep-per-class.csv"
+    if pc_path.exists():
+        with pc_path.open(newline="") as fh:
+            per_class = list(csv.DictReader(fh))
+
+    return {
+        "serving": {"source": inference.source, "version": inference.version,
+                    "degraded": inference.degraded},
+        "summary": read_json("deep-summary.json"),
+        "metropt": read_json("metropt-summary.json"),
+        "acceptance": acceptance,
+        "per_class": per_class,
+    }
 
 
 @app.post("/api/copilot")

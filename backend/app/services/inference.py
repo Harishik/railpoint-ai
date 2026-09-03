@@ -70,6 +70,10 @@ class InferenceService:
         self._maha_prec = None
         self._probe = None
         self._probe_mean = None
+        #: Per-feature mean/std over healthy training events, used to express a
+        #: measurement as a deviation from normal operation.
+        self._normal_mean = None
+        self._normal_std = None
         self._load()
 
     @property
@@ -113,6 +117,9 @@ class InferenceService:
             self._conformal_qhat = float(c["conformal_qhat"])
             self._rul_qhat = float(c["rul_qhat"])
             self._maha_mean, self._maha_prec = c["maha_mean"], c["maha_precision"]
+            if "normal_mean" in c and c["normal_mean"].size:
+                self._normal_mean = c["normal_mean"]
+                self._normal_std = c["normal_std"]
         if self._net is None:
             self._fit_probe()
 
@@ -215,11 +222,23 @@ class InferenceService:
     def _attribute(self, feats: dict, vec: np.ndarray, class_idx: int) -> list[tuple[str, float, float]]:
         """Local attribution over the operator-readable feature subset.
 
-        With the linear probe this is exact (coefficient x deviation). With the
-        encoder it is a deviation-magnitude proxy - honest about being a proxy,
-        and replaced by integrated gradients once that lands.
+        With the linear probe this is exact: coefficient x standardised
+        deviation. With the encoder it is a **deviation proxy** - how many
+        standard deviations this measurement sits from healthy operation,
+        signed. That is not a true attribution and the model card says so;
+        integrated gradients is the honest upgrade.
+
+        What it must never be is the raw measurement. That was the previous
+        fallback, and it made the ranking a function of each feature's *units*:
+        throw duration, measured in hundreds of samples, outranked every
+        binary indicator on every event regardless of relevance.
         """
         rows: list[tuple[str, float, float]] = []
+        have_reference = (
+            self._normal_mean is not None
+            and self._normal_std is not None
+            and len(self._normal_mean) == len(FEATURE_NAMES)
+        )
         for name in EXPLAIN_LABELS:
             if name not in FEATURE_NAMES:
                 continue
@@ -229,8 +248,12 @@ class InferenceService:
                 scale = self._probe.named_steps["scale"].scale_[j]
                 coef = self._probe.named_steps["clf"].coef_[class_idx, j]
                 contribution = float(coef * (value - self._probe_mean[j]) / (scale or 1.0))
+            elif have_reference:
+                contribution = float((value - self._normal_mean[j]) / self._normal_std[j])
             else:
-                contribution = value
+                # No reference available: report zero rather than inventing a
+                # number. A blank evidence panel is honest; a wrong one is not.
+                contribution = 0.0
             rows.append((name, value, contribution))
         rows.sort(key=lambda r: abs(r[2]), reverse=True)
         return rows[:8]

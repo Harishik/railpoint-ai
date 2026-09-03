@@ -60,6 +60,32 @@ def infer(model, signals: np.ndarray, lengths: np.ndarray, batch: int = 256) -> 
     }
 
 
+def _normal_reference() -> dict[str, np.ndarray]:
+    """Mean and standard deviation of each feature over healthy events.
+
+    Computed from the stratified sweep's NORMAL class only, so a deviation
+    measured against it answers "how unusual is this reading for a machine that
+    is working", which is the question an operator is actually asking.
+    """
+    from ..data import load
+    from ..features import FEATURE_NAMES
+
+    ds = load("stratified")
+    if ds.features is None:
+        return {"normal_mean": np.zeros(0), "normal_std": np.zeros(0)}
+    healthy = ds.features[(ds.meta.fault == "NORMAL").to_numpy()]
+    if healthy.size == 0:
+        return {"normal_mean": np.zeros(0), "normal_std": np.zeros(0)}
+    mean = np.nanmean(healthy, axis=0)
+    std = np.nanstd(healthy, axis=0)
+    # A feature that never varies among healthy events cannot produce a
+    # meaningful z-score; 1.0 makes its deviation read as raw difference
+    # rather than dividing by ~0 and exploding.
+    std = np.where(np.isfinite(std) & (std > 1e-9), std, 1.0)
+    assert mean.shape[0] == len(FEATURE_NAMES)
+    return {"normal_mean": np.nan_to_num(mean), "normal_std": std}
+
+
 def run(cfg: TrainConfig | None = None, threads: int | None = None) -> dict:
     cfg = cfg or TrainConfig()
     torch.set_num_threads(threads or max(1, (os.cpu_count() or 4) - 1))
@@ -166,6 +192,11 @@ def run(cfg: TrainConfig | None = None, threads: int | None = None) -> dict:
         # letting np.savez receive a possible None.
         maha_mean=scorer.mean if scorer.mean is not None else np.zeros(0),
         maha_precision=scorer.precision if scorer.precision is not None else np.zeros((0, 0)),
+        # Per-feature statistics over NORMAL training events. The console needs
+        # these to say how far a measurement sits from healthy; without them its
+        # "attribution" degrades to echoing the raw value, which ranks whichever
+        # feature happens to be measured in the largest units.
+        **_normal_reference(),
     )
     (RESULTS / "deep-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     result.per_class.to_csv(RESULTS / "deep-per-class.csv", index=False)

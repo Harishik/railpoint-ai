@@ -76,7 +76,7 @@ The 2024 code got a 34-defect audit; it would be dishonest not to audit the
 replacement to the same standard. These were found by an adversarial multi-agent
 review of the rebuilt codebase, then verified individually against the source.
 
-Twenty-two confirmed. Three of them meant a published claim was false, and one
+Twenty-four confirmed. Three of them meant a published claim was false, and one
 had been silently corrupting this session's own results.
 
 | ID | Severity | File | Defect | Fix |
@@ -102,6 +102,8 @@ had been silently corrupting this session's own results.
 | RP-20 | medium | `.claude/launch.json` | Every path was relative. The preview launcher runs with a working directory it cannot resolve (`getcwd: cannot access parent directories`) because the project folder contains spaces and ends in a period, so both servers failed with `Operation not permitted`. | Absolute paths; the API runs as `python -m uvicorn` with an explicit `--app-dir` instead of depending on the working directory. |
 | RP-21 | high | `frontend/package.json`, `.github/workflows/ci.yml` | `tsc --noEmit` was run against a **solution-style** `tsconfig.json` (`"files": []`, only `references`). That form type-checks **nothing** and exits 0, so the frontend had no type coverage at all — locally or in CI — for the entire build. Switching to `tsc -b` immediately surfaced 4 real errors. | `tsc -b --force` in the `typecheck` script, the `build` script, and CI, with a comment explaining why `--noEmit` is not equivalent here. |
 | RP-22 | medium | `frontend/src/components/Waveform.tsx` | The channel-unit suffix in the legend used `opacity-60` over `--color-ink`, measuring **1.92:1** in dark and 3.01:1 in light — both under the 4.5 floor. De-emphasis carried in alpha silently defeats a token chosen to pass. | Uses `--color-ink-dim` at full opacity. Measured audit now reports zero contrast failures in both themes. |
+| RP-23 | **high** | `backend/app/services/inference.py` | When the trained encoder was serving, `_attribute` fell through to `contribution = value` — the "contribution" was **literally the raw measurement**. The ranking was therefore a function of each feature's *units*: throw duration, in hundreds of samples, outranked every binary indicator on every event regardless of relevance. The docstring claimed a "deviation-magnitude proxy"; no deviation was computed. Invisible in the UI because the evidence row showed only one number. | Contribution is now a signed deviation in standard deviations from healthy operation, using per-feature statistics over NORMAL training events persisted into `calibration.npz`. With no reference available it reports 0 rather than inventing a number. |
+| RP-24 | medium | `frontend/src/components/Evidence.tsx` | The bar length encoded *contribution* while the only number on the row was the *measured value*, so a full-width bar sat beside "170.00" and read as if the bar meant 170. Two quantities, one label. This is what hid RP-23. | Measured and Contribution are separate labelled columns, with a legend stating that bar length is the contribution and which direction supports the diagnosis. |
 | RP-09 | medium | `ml/pmdlib/train/pipeline.py` | Conformal calibration is fitted on the same `val` split used for early stopping and checkpoint selection, breaking the exchangeability the coverage guarantee rests on. | Needs a dedicated calibration split. *(pending)* |
 
 ## Findings recorded but not yet resolved
