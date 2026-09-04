@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Empty, Page, Section } from '../shell/Page'
+import { Empty, Note, Page, Panel } from '../shell/Page'
 import { Waveform } from '../components/Waveform'
 import { Evidence } from '../components/Evidence'
 import { Copilot } from '../components/Copilot'
@@ -13,8 +13,12 @@ import { SEVERITY_COLOR, ago, faultLabel } from '../lib/format'
  * Diagnostics — one throw, in full.
  *
  * The waveform is the reason this page exists, so it gets the width. Everything
- * else on the page explains it: what the model concluded, which measurements
- * drove that, and what a crew should do about it.
+ * else explains it: what the model concluded, which measurements drove that,
+ * and what a crew should do about it.
+ *
+ * Following the live feed is opt-in. This is a reading surface — an operator
+ * opens it to study one throw — and a page that swaps the trace out every three
+ * seconds cannot be read at all. New throws are offered, never forced.
  */
 export function Diagnostics() {
   const { eventId } = useParams()
@@ -22,9 +26,6 @@ export function Diagnostics() {
   const navigate = useNavigate()
   const [detail, setDetail] = useState<EventDetail | null>(null)
   const [hovered, setHovered] = useState<string | null>(null)
-  // Following the live feed is opt-in. This is a reading surface: an operator
-  // opens it to study one throw, and a page that swaps the waveform out every
-  // three seconds cannot be read at all.
   const [follow, setFollow] = useState(false)
   const [pinned, setPinned] = useState<string | null>(null)
 
@@ -56,124 +57,136 @@ export function Diagnostics() {
   }, [id])
 
   const pred = detail?.prediction
+  const colour = pred ? SEVERITY_COLOR[pred.severity] : 'var(--color-label)'
+  const clear = pred?.severity === 'normal'
 
   return (
     <Page
       title="Diagnostics"
       ko="파형 분석"
-      lede={detail ? `Event ${detail.id} on ${detail.machine_id}, commanded to ${detail.direction}.` : undefined}
+      lede={detail ? (
+        <>
+          Event <span className="mono" style={{ color: 'var(--color-ink-4)' }}>{detail.id}</span> on{' '}
+          <span className="mono" style={{ color: 'var(--color-ink-4)' }}>{detail.machine_id}</span>, commanded to{' '}
+          {detail.direction}.
+        </>
+      ) : 'Waiting for a throw to inspect.'}
       actions={
         <div className="flex flex-wrap items-center gap-2.5">
           {!eventId && (
-            <button
+            <button type="button" aria-pressed={follow}
               onClick={() => { setFollow((f) => !f); if (!follow) setPinned(null) }}
-              aria-pressed={follow}
-              className="press t-label flex items-center gap-1.5 rounded-md border px-2 py-1"
-              style={{
-                borderColor: follow ? 'color-mix(in oklch, var(--color-normal) 45%, transparent)' : 'var(--color-line)',
-                color: follow ? 'var(--color-normal)' : 'var(--color-ink-dim)',
-              }}
               title={follow ? 'Following the live feed' : 'Holding on one throw'}
-            >
-              <span
-                className="h-1.5 w-1.5 rounded-full"
-                style={{ background: follow ? 'var(--color-normal)' : 'var(--color-line-strong)' }}
-              />
+              className="press inline-flex h-[30px] items-center gap-2 px-3 text-[12px] font-medium leading-none"
+              style={{
+                border: `1px solid ${follow ? '#1D3A2C' : 'var(--color-rule)'}`,
+                background: follow ? 'rgba(63,214,140,.07)' : 'var(--color-raised)',
+                color: follow ? 'var(--color-green)' : 'var(--color-ink-4)',
+              }}>
+              <span aria-hidden className={`h-[5px] w-[5px] rounded-full ${follow ? 'pulse-live' : ''}`}
+                style={{ background: follow ? 'var(--color-green)' : 'var(--color-rule-hi)' }} />
               {follow ? 'Following live' : 'Hold'}
             </button>
           )}
           {newer > 0 && (
-            <button
-              onClick={() => setPinned(latestId ?? null)}
-              className="press t-label rounded-md px-2 py-1"
-              style={{
-                background: 'color-mix(in oklch, var(--color-transit) 16%, transparent)',
-                color: 'var(--color-transit)',
-              }}
-            >
+            <button type="button" onClick={() => setPinned(latestId ?? null)}
+              className="press inline-flex h-[30px] items-center px-3 text-[12px] font-medium leading-none"
+              style={{ background: 'rgba(79,184,232,.14)', color: 'var(--color-cyan)' }}>
               {newer} newer {newer === 1 ? 'throw' : 'throws'} · show latest
             </button>
           )}
           {pred && (
-          <div className="flex items-center gap-2.5">
-            <span
-              className="t-label rounded-full px-2.5 py-1 font-semibold"
+            <div className="flex items-stretch"
               style={{
-                background: `color-mix(in oklch, ${SEVERITY_COLOR[pred.severity]} 16%, transparent)`,
-                color: SEVERITY_COLOR[pred.severity],
-                boxShadow: `inset 0 0 0 1px color-mix(in oklch, ${SEVERITY_COLOR[pred.severity]} 35%, transparent)`,
-              }}
-            >
-              {pred.fault_en}
-            </span>
-            <span className="t-label text-ink-faint">{pred.fault_ko}</span>
-            <span className="t-metric">{(pred.confidence * 100).toFixed(0)}<span className="t-label text-ink-faint">%</span></span>
-          </div>
+                border: `1px solid ${clear ? '#1D3A2C' : 'rgba(255,90,54,.3)'}`,
+                background: clear ? 'rgba(63,214,140,.06)' : 'rgba(255,90,54,.05)',
+              }}>
+              <div className="flex flex-col gap-[5px] border-r px-[15px] py-2.5" style={{ borderColor: 'inherit' }}>
+                <span className="cap" style={{ color: 'var(--color-label)' }}>Verdict</span>
+                <span className="text-[14px] font-semibold leading-none" style={{ color: colour }}>{pred.fault_en}</span>
+              </div>
+              <div className="flex flex-col gap-[5px] border-r px-[15px] py-2.5" style={{ borderColor: 'inherit' }}>
+                <span className="cap">90% set</span>
+                <span className="mono text-[14px] font-medium leading-none" style={{ color: 'var(--color-ink-2)' }}>
+                  {pred.set_size} {pred.set_size === 1 ? 'label' : 'labels'}
+                </span>
+              </div>
+              <div className="flex flex-col gap-[5px] px-[15px] py-2.5">
+                <span className="cap">Samples</span>
+                <span className="mono text-[14px] font-medium leading-none" style={{ color: 'var(--color-ink-2)' }}>
+                  {detail?.n_samples ?? '—'}
+                </span>
+              </div>
+            </div>
           )}
         </div>
       }
     >
-      <Section>
-        {detail ? (
-          <Waveform event={detail} hoveredFeature={hovered} />
-        ) : (
-          <div className="h-[360px] animate-pulse rounded-lg bg-surface-2" />
-        )}
-      </Section>
+      {detail ? (
+        <Waveform event={detail} hoveredFeature={hovered} />
+      ) : (
+        <div className="h-[420px] animate-pulse" style={{ background: 'var(--color-panel)' }} />
+      )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <Section
-          title="Evidence"
-          aside={pred && (
-            <span className="t-label text-ink-faint">
-              {pred.set_size === 1 ? 'confident' : `${pred.set_size} candidates at 90%`}
-            </span>
-          )}
-        >
+      <div className="grid items-start gap-[18px] xl:grid-cols-[1.35fr_1fr]">
+        <Panel title="Evidence" flush aside={<Note>CONTRIBUTION TO VERDICT</Note>}>
           {detail ? (
             <>
-              {pred && pred.set_size > 1 && (
-                <p className="t-label mb-3 rounded-lg bg-surface-2 px-3 py-2 leading-snug text-ink-dim">
-                  The model cannot separate{' '}
-                  <span className="text-ink">{pred.prediction_set.map(faultLabel).join(', ')}</span>{' '}
-                  at 90% coverage. Treat this as a shortlist, not a diagnosis.
-                </p>
+              {pred && pred.set_size !== 1 && (
+                <div className="border-b px-[18px] py-3 text-[12px] leading-[1.55]"
+                  style={{ borderColor: 'var(--color-hair)', color: 'var(--color-dim)' }}>
+                  {pred.set_size === 0 ? (
+                    <>
+                      The 90% prediction set for this throw is <span style={{ color: 'var(--color-accent)' }}>empty</span> —
+                      the conformal threshold rejected every label. This is the calibration defect recorded on
+                      the Model page, not a reading about the machine.
+                    </>
+                  ) : (
+                    <>
+                      The model cannot separate{' '}
+                      <span style={{ color: 'var(--color-ink-2)' }}>{pred.prediction_set.map(faultLabel).join(', ')}</span>{' '}
+                      at 90% coverage. Treat this as a shortlist, not a diagnosis.
+                    </>
+                  )}
+                </div>
               )}
               <Evidence attributions={detail.attributions} onHover={setHovered} />
             </>
           ) : (
-            <div className="h-32 animate-pulse rounded-lg bg-surface-2" />
+            <div className="m-[18px] h-40 animate-pulse" style={{ background: 'var(--color-raised)' }} />
           )}
-        </Section>
+        </Panel>
 
-        <Section title="Maintenance copilot" aside={<span className="t-label text-ink-faint">정비 보조</span>}>
-          <Copilot eventId={detail?.id ?? null} />
-        </Section>
+        <Panel title="Maintenance copilot" aside={<Note>정비 보조</Note>}>
+          <Copilot eventId={detail?.id ?? null} verdict={pred?.fault_en} machineId={detail?.machine_id} />
+        </Panel>
       </div>
 
-      <Section title="Recent throws" aside={<span className="t-label text-ink-faint">click to inspect</span>}>
+      <Panel title="Recent throws" flush aside={<Note>CLICK TO INSPECT</Note>}>
         {events.length === 0 ? (
           <Empty>No throws recorded yet.</Empty>
         ) : (
-          <ul className="flex flex-wrap gap-1.5">
-            {events.slice(0, 30).map((e) => (
-              <li key={e.id}>
-                <button
+          <div className="flex flex-wrap gap-2 px-[18px] py-4">
+            {events.slice(0, 30).map((e) => {
+              const on = e.id === id
+              return (
+                <button key={e.id} type="button" aria-current={on}
                   onClick={() => { setFollow(false); setPinned(e.id); navigate(`/events/${e.id}`) }}
-                  aria-current={e.id === id}
-                  className={`press t-label flex items-center gap-1.5 rounded-md border px-2 py-1 ${
-                    e.id === id ? 'border-line-strong bg-surface-3 text-ink' : 'border-line text-ink-dim hover:text-ink'
-                  }`}
-                >
-                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: SEVERITY_COLOR[e.prediction.severity] }} />
-                  <span className="num">{e.machine_id}</span>
-                  <span className="text-ink-faint">{ago(e.ts)}</span>
+                  className="press inline-flex h-[30px] items-center gap-2 px-3 text-[12px] leading-none"
+                  style={{
+                    border: `1px solid ${on ? 'var(--color-rule-hi)' : 'var(--color-edge)'}`,
+                    background: on ? 'var(--color-raised)' : 'var(--color-deep)',
+                    color: on ? 'var(--color-ink)' : 'var(--color-dim)',
+                  }}>
+                  <span aria-hidden className="h-1.5 w-1.5 rounded-full" style={{ background: SEVERITY_COLOR[e.prediction.severity] }} />
+                  <span className="mono">{e.machine_id}</span>
+                  <span className="mono text-[11px]" style={{ color: 'var(--color-label)' }}>{ago(e.ts)}</span>
                 </button>
-              </li>
-            ))}
-          </ul>
+              )
+            })}
+          </div>
         )}
-      </Section>
+      </Panel>
     </Page>
   )
 }

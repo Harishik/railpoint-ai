@@ -1,178 +1,184 @@
 @import "tailwindcss";
 
 /* ─────────────────────────────────────────────────────────────────────────
-   Design tokens — see design-system/MASTER.md
+   RailPoint-AI console — design tokens.
 
-   Colour is state, never decoration. The three primary hues are the point
-   machine's own indication states: +23 V locked Normal, ~0 V in transit,
-   −23 V locked Reverse. The palette *is* the domain model.
+   Taken from the Claude Design handoff (`RailPoint Console.dc.html`). One
+   scheme only: this is a control-room surface meant to sit on a wall display
+   for a whole shift, and the design specifies a single dark palette rather
+   than a pair. Nothing here is derived or invented except where noted.
+
+   Two deliberate departures from the prototype, both recorded in
+   design-system/MASTER.md:
+
+   1. The prototype's five-step grey text ramp (#8A99AC → #3A4657) bottoms out
+      at 2.0:1 against the panel. Text tiers below the WCAG AA floor are lifted
+      to --color-label (4.56:1 measured); the darker greys survive only as
+      hairlines, chart grid and the unset rail, where they carry no reading.
+   2. Focus rings. The prototype has none; a console operable only by mouse is
+      not shippable.
    ───────────────────────────────────────────────────────────────────────── */
 @theme {
-  --font-sans: "IBM Plex Sans", "IBM Plex Sans KR", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-sans: "Instrument Sans", "Noto Sans KR", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
 
-  --color-bg: oklch(0.145 0.014 250);
-  --color-surface-1: oklch(0.192 0.016 250);
-  --color-surface-2: oklch(0.232 0.018 250);
-  --color-surface-3: oklch(0.278 0.020 250);
-  --color-line: oklch(0.31 0.018 250);
-  --color-line-strong: oklch(0.44 0.022 250);
-  --color-ink: oklch(0.97 0.004 250);
-  --color-ink-dim: oklch(0.755 0.012 250);
-  /* 0.58 measured 4.22:1 against surface-1, below the 4.5 AA floor.
-     This token carries labels and metadata, so it has to pass. */
-  --color-ink-faint: oklch(0.645 0.014 250);
+  /* Grounds, darkest to lightest. */
+  --color-rail-deep: #080C11;  /* left rail footer */
+  --color-rail: #0A0E13;       /* left rail */
+  --color-bg: #0B0F14;         /* page */
+  --color-deep: #0D1218;       /* inset: table headers, chart wells */
+  --color-shell: #0E141B;      /* status strip */
+  --color-panel: #10151C;      /* panel */
+  --color-active: #111823;     /* active nav row */
+  --color-raised: #141C26;     /* row hover, buttons */
+  --color-inspector: #0C1116;  /* inspector ground */
 
-  /* Raised chroma over the first pass: at 0.15 these read as grey-green and
-     grey-amber on a dark ground, and a state colour that does not register at a
-     glance is not doing its job on a safety surface. */
-  --color-normal: oklch(0.78 0.19 156);
-  --color-reverse: oklch(0.83 0.17 78);
-  --color-transit: oklch(0.76 0.15 232);
-  --color-fault: oklch(0.68 0.24 25);
-  --color-degraded: oklch(0.79 0.19 56);
-  --color-unknown: oklch(0.55 0.02 250);
+  /* Structure. None of these ever carries text. */
+  --color-hair: #131B24;       /* row divider */
+  --color-edge: #17202B;       /* chrome divider */
+  --color-grid: #182130;       /* chart grid */
+  --color-line: #1B2430;       /* panel border */
+  --color-idle: #1F2937;       /* unset rail leg, empty meter */
+  --color-rule: #22303F;       /* control border */
+  --color-axis: #26313F;       /* schematic rules */
+  --color-tick: #2B3746;       /* zero marker */
+  --color-rule-hi: #35485E;    /* control border, hover */
+  --color-scroll: #1E2836;
+
+  /* Text. Ratios measured in the browser against --color-raised (#141C26),
+     the darkest ground any of these ever sits on — the row-hover state. Every
+     one clears the 4.5:1 AA floor there, and so clears it everywhere else.
+     --color-label is the design's #6E7F94 lifted three steps: at the original
+     value it measured 4.19:1 on a hovered row and 4.47:1 on a panel, and it
+     carries every column caption in the console. */
+  --color-ink-hi: #F2F6FB;     /* headings                       15.8:1 */
+  --color-ink: #E7EDF4;        /* primary                        14.6:1 */
+  --color-ink-2: #DCE5F0;      /* primary on rows                13.5:1 */
+  --color-ink-3: #C4D0DE;      /* secondary                      11.0:1 */
+  --color-ink-4: #B8C4D4;      /* secondary on rows               9.7:1 */
+  --color-dim: #8A99AC;        /* section titles                  5.9:1 */
+  --color-body: #7C8CA0;       /* running prose                   5.0:1 */
+  --color-label: #76889D;      /* column captions, metadata       4.7:1 */
+
+  /* State. These are the machine's own indication states, not a theme:
+     the green is a proven Normal lie, the cyan a proven Reverse lie. */
+  --color-accent: #FF5A36;
+  --color-accent-hi: #FF7C5E;
+  --color-amber: #F2B33D;
+  --color-green: #3FD68C;
+  --color-cyan: #4FB8E8;
+  --color-violet: #C97BE8;
 
   /* Built-in CSS easings are too weak to read as intentional. */
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
-:root {
-  color-scheme: dark;
-  --grid: oklch(0.265 0.016 250);
-  /* Translucent chrome. Content scrolls under the header rather than being
-     walled off by an opaque strip. */
-  --chrome: oklch(0.192 0.016 250 / 0.72);
-  --chrome-edge: oklch(1 0 0 / 0.06);
-  --shadow-hero: 0 1px 0 0 oklch(1 0 0 / 0.04), 0 12px 32px -12px oklch(0 0 0 / 0.55);
-}
+:root { color-scheme: dark; }
 
-/* Light theme. Defined in full rather than inverted — an inverted dark palette
-   loses the contrast relationships the state colours depend on. */
-html.light {
-  color-scheme: light;
-  --color-bg: oklch(0.965 0.004 250);
-  --color-surface-1: oklch(1 0 0);
-  --color-surface-2: oklch(0.972 0.005 250);
-  --color-surface-3: oklch(0.935 0.008 250);
-  --color-line: oklch(0.885 0.008 250);
-  --color-line-strong: oklch(0.72 0.012 250);
-  --color-ink: oklch(0.20 0.015 250);
-  --color-ink-dim: oklch(0.43 0.015 250);
-  --color-ink-faint: oklch(0.515 0.014 250);
-  --color-normal: oklch(0.50 0.16 156);
-  --color-reverse: oklch(0.56 0.15 78);
-  --color-transit: oklch(0.50 0.16 252);
-  --color-fault: oklch(0.52 0.22 25);
-  --color-degraded: oklch(0.58 0.17 56);
-  --color-unknown: oklch(0.62 0.02 250);
-  --grid: oklch(0.905 0.006 250);
-  --chrome: oklch(1 0 0 / 0.75);
-  --chrome-edge: oklch(0 0 0 / 0.06);
-  --shadow-hero: 0 1px 0 0 oklch(1 0 0 / 0.8), 0 12px 28px -14px oklch(0 0 0 / 0.18);
-}
-
+*, *::before, *::after { box-sizing: border-box; }
 html, body, #root { height: 100%; }
 
 body {
+  margin: 0;
   background: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* ── Type scale ───────────────────────────────────────────────────────────
-   Tracking is size-specific, never one value for every size: large text reads
-   too loose as it grows and wants negative tracking, small text wants a little
-   positive. Leading moves inversely to size. Hierarchy comes from weight, size
-   and leading as a set — not size alone.
-   ───────────────────────────────────────────────────────────────────────── */
-.t-display {
-  font-size: 30px; line-height: 1.0; font-weight: 600; letter-spacing: -0.022em;
-  font-variant-numeric: tabular-nums; font-family: var(--font-mono);
-}
-.t-metric {
-  font-size: 19px; line-height: 1.1; font-weight: 600; letter-spacing: -0.014em;
-  font-variant-numeric: tabular-nums; font-family: var(--font-mono);
-}
-.t-title    { font-size: 15px; line-height: 1.3;  font-weight: 600; letter-spacing: -0.008em; }
-.t-body     { font-size: 13px; line-height: 1.5;  letter-spacing: 0; }
-.t-label    { font-size: 12px; line-height: 1.35; letter-spacing: 0.004em; }
-.t-micro    { font-size: 10.5px; line-height: 1.2; font-weight: 600;
-              letter-spacing: 0.085em; text-transform: uppercase; }
+::selection { background: rgba(255, 90, 54, 0.28); }
 
-/* Every numeric value is monospaced and tabular so digits never reflow. */
-.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-
-/* ── Materials ───────────────────────────────────────────────────────────── */
-.chrome {
-  background: var(--chrome);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border-bottom: 1px solid var(--chrome-edge);
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--color-bg); }
+::-webkit-scrollbar-thumb {
+  background: var(--color-scroll);
+  border: 3px solid var(--color-bg);
+  border-radius: 6px;
 }
-/* Scroll edge effect rather than a hard 1px rule: content fades where it meets
-   floating chrome, only where the two actually overlap. */
-.edge-fade {
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10px);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 10px);
+
+/* ── Type ────────────────────────────────────────────────────────────────
+   Tracking is size-specific: the 24px page title wants negative tracking, the
+   9px mono caption wants a lot of positive. One tracking value across a scale
+   is what makes an interface look machine-set.
+   ──────────────────────────────────────────────────────────────────────── */
+.t-h1   { font: 600 24px/1 var(--font-sans); letter-spacing: -0.025em; color: var(--color-ink-hi); }
+.t-ko   { font: 400 14px/1 var(--font-sans); color: var(--color-label); }
+.t-lede { font: 400 13px/1.55 var(--font-sans); color: var(--color-body); text-wrap: pretty; }
+
+/* Column captions. */
+.cap { font: 500 9px/1 var(--font-mono); letter-spacing: 0.14em; color: var(--color-label); text-transform: uppercase; }
+/* Panel titles. */
+.sec { font: 500 10px/1 var(--font-mono); letter-spacing: 0.16em; color: var(--color-dim); text-transform: uppercase; }
+
+/* Every number is monospaced and tabular so digits never reflow under a
+   three-second stream. */
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ── Surfaces ────────────────────────────────────────────────────────────
+   Square corners throughout, and a single inset highlight along the top edge
+   so a panel reads as a plate catching light rather than a floating card.
+   ──────────────────────────────────────────────────────────────────────── */
+.panel {
+  border: 1px solid var(--color-line);
+  background: var(--color-panel);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.panel-deep {
+  border: 1px solid var(--color-line);
+  background: var(--color-deep);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--color-edge);
 }
 
 /* ── Interaction ─────────────────────────────────────────────────────────── */
-/* Buttons must feel like the interface heard the press. Feedback on
-   pointer-down, never on release. */
-.press { transition: transform 130ms var(--ease-out-strong), background-color 130ms var(--ease-out-strong); }
-.press:active { transform: scale(0.97); }
+/* Feedback on pointer-down, never on release. */
+.press { transition: transform 130ms var(--ease-out-strong), background-color 130ms var(--ease-out-strong), border-color 130ms var(--ease-out-strong), color 130ms var(--ease-out-strong); }
+.press:active { transform: scale(0.98); }
 
-/* Focus rings are never removed — only made deliberate. */
+/* The prototype has no focus treatment at all. Rings are never removed here,
+   only made deliberate. */
 :where(a, button, [tabindex], input, select, summary):focus-visible {
-  outline: 2px solid var(--color-transit);
-  outline-offset: 2px;
-  border-radius: 3px;
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
 }
-
-::-webkit-scrollbar { width: 9px; height: 9px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: var(--color-line);
-  border-radius: 6px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-::-webkit-scrollbar-thumb:hover { background: var(--color-line-strong); background-clip: padding-box; }
 
 /* ── Motion ──────────────────────────────────────────────────────────────── */
+/* A heartbeat, not an alarm: it marks a live link and stops when the link
+   does, which is the one case where a loop carries information. */
+@keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.28 } }
+.pulse { animation: pulse 2.6s ease-in-out infinite; }
+.pulse-live { animation: pulse 1.8s ease-in-out infinite; }
+
 /* The waveform draws along its own sample index, so the animation *is* the
    throw replaying — not decoration. */
-@keyframes trace-in { from { stroke-dashoffset: var(--len); } to { stroke-dashoffset: 0; } }
-.trace-in {
-  stroke-dasharray: var(--len);
-  animation: trace-in var(--dur, 520ms) var(--ease-out-quint) both;
-}
+@keyframes trace-in { from { stroke-dashoffset: var(--len) } to { stroke-dashoffset: 0 } }
+.trace-in { stroke-dasharray: var(--len); animation: trace-in var(--dur, 520ms) var(--ease-out-quint) both; }
 
-/* One attention pulse on alarm arrival, then settle. Never loops: a pulsing
-   alarm becomes wallpaper within a minute and stops being seen. */
-@keyframes attention { 0% { box-shadow: 0 0 0 0 currentColor; opacity: 1 } 100% { box-shadow: 0 0 0 14px transparent; opacity: 1 } }
+/* One attention pulse on arrival, then settle. Never loops: a blinking alarm
+   becomes wallpaper within a minute and stops being seen. */
+@keyframes attention { from { box-shadow: 0 0 0 0 currentColor } to { box-shadow: 0 0 0 14px transparent } }
 .attention { animation: attention 900ms var(--ease-out-quint) 1 both; }
 
 /* Never from scale(0) — nothing in the real world appears from nothing. */
-@keyframes rise { from { opacity: 0; transform: translateY(5px) scale(0.99) } to { opacity: 1; transform: none } }
+@keyframes rise { from { opacity: 0; transform: translateY(5px) } to { opacity: 1; transform: none } }
 .rise { animation: rise 200ms var(--ease-out-strong) both; }
 
-/* Staggered entry for lists. Short delays only: long ones make the interface
-   feel slow, and stagger is decoration that must never block interaction. */
 .stagger > * { animation: rise 200ms var(--ease-out-strong) both; }
 .stagger > *:nth-child(1) { animation-delay: 0ms }
-.stagger > *:nth-child(2) { animation-delay: 26ms }
-.stagger > *:nth-child(3) { animation-delay: 52ms }
-.stagger > *:nth-child(4) { animation-delay: 78ms }
-.stagger > *:nth-child(5) { animation-delay: 104ms }
-.stagger > *:nth-child(n+6) { animation-delay: 130ms }
+.stagger > *:nth-child(2) { animation-delay: 22ms }
+.stagger > *:nth-child(3) { animation-delay: 44ms }
+.stagger > *:nth-child(4) { animation-delay: 66ms }
+.stagger > *:nth-child(5) { animation-delay: 88ms }
+.stagger > *:nth-child(n+6) { animation-delay: 110ms }
+
+@keyframes slide-in { from { transform: translateX(14px); opacity: 0 } to { transform: none; opacity: 1 } }
+.slide-in { animation: slide-in 220ms var(--ease-out-quint) both; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -182,9 +188,4 @@ body {
   }
   .trace-in { stroke-dasharray: none; }
   .press:active { transform: none; }
-}
-
-/* Translucency is a preference, not a given. */
-@media (prefers-reduced-transparency: reduce) {
-  .chrome { background: var(--color-surface-1); backdrop-filter: none; -webkit-backdrop-filter: none; }
 }

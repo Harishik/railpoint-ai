@@ -24,6 +24,7 @@ ML_ROOT = Path(__file__).resolve().parents[2] / "ml"
 if str(ML_ROOT) not in sys.path:
     sys.path.insert(0, str(ML_ROOT))
 
+from pmdlib.models.prep import SEQ_LEN  # noqa: E402
 from pmdlib.sim.spec import CHANNELS  # noqa: E402
 
 CHANNEL_UNITS = {
@@ -190,10 +191,17 @@ async def model_card() -> dict:
         with pc_path.open(newline="") as fh:
             per_class = list(csv.DictReader(fh))
 
+    summary = read_json("deep-summary.json")
+    if summary is not None:
+        # The input grid the encoder actually sees. Reported from the serving
+        # code rather than the artefact because it is a property of how the
+        # capture is prepared, not of the training run that produced the file.
+        summary["window"] = SEQ_LEN
+
     return {
         "serving": {"source": inference.source, "version": inference.version,
                     "degraded": inference.degraded},
-        "summary": read_json("deep-summary.json"),
+        "summary": summary,
         "metropt": read_json("metropt-summary.json"),
         "acceptance": acceptance,
         "per_class": per_class,

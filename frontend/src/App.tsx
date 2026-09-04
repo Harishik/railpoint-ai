@@ -1,26 +1,45 @@
-import { useEffect, useState } from 'react'
-import { Route, Routes } from 'react-router-dom'
-import { Sidebar } from './shell/Sidebar'
-import { TopBar } from './shell/TopBar'
+import { useCallback, useEffect } from 'react'
+import { Navigate, Route, Routes, useParams, useSearchParams } from 'react-router-dom'
+import { RailCompact, Sidebar } from './shell/Sidebar'
+import { StatusStrip } from './shell/StatusStrip'
+import { Inspector } from './shell/Inspector'
 import { Territory } from './pages/Territory'
 import { Fleet } from './pages/Fleet'
 import { Alerts } from './pages/Alerts'
 import { Diagnostics } from './pages/Diagnostics'
-import { MachinePage } from './pages/MachinePage'
 import { Model } from './pages/Model'
 import { useConsole } from './state/console'
 
+/**
+ * The console shell.
+ *
+ * A fixed two-column frame — rail, then a workspace that scrolls under a status
+ * strip that does not. Nothing about the frame moves as you navigate, so the
+ * counters, the serving model and the feed state stay in exactly the same place
+ * on every page. That is the property a wall display needs and the one a page
+ * of stacked cards cannot give you.
+ */
 export function App() {
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const { openAlerts } = useConsole()
   const latest = openAlerts[0]
+  const [params, setParams] = useSearchParams()
 
-  useEffect(() => {
-    document.documentElement.classList.toggle('light', theme === 'light')
-    document.documentElement.classList.toggle('dark', theme === 'dark')
-  }, [theme])
+  // The inspector lives in the URL rather than in component state, so it is
+  // linkable and a link to one machine opens on whichever workspace it was sent
+  // from. The write replaces rather than pushes: inspecting eight turnouts in a
+  // row should not bury the previous page under eight history entries. Escape
+  // and the close button are what dismiss it.
+  const selected = params.get('m')
+  const select = useCallback((id: string | null) => {
+    setParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (id === null || id === next.get('m')) next.delete('m')
+      else next.set('m', id)
+      return next
+    }, { replace: true })
+  }, [setParams])
 
-  // Roving focus along the schematic. A control-room console has to be operable
+  // Roving focus along the plan. A control-room console has to be operable
   // without a mouse, but the arrows move *focus* rather than navigating — a key
   // press that changes page under the operator is not traversal, it is a trap.
   useEffect(() => {
@@ -42,11 +61,11 @@ export function App() {
   }, [])
 
   return (
-    <div className="flex h-full flex-col bg-bg text-ink lg:flex-row">
-      <a
-        href="#workspace"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[1000] focus:rounded focus:bg-surface-3 focus:px-3 focus:py-1.5"
-      >
+    <div className="grid h-full w-full overflow-hidden lg:grid-cols-[238px_minmax(0,1fr)]"
+      style={{ background: 'var(--color-bg)' }}>
+      <a href="#workspace"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[1000] focus:px-3 focus:py-1.5"
+        style={{ background: 'var(--color-raised)', color: 'var(--color-ink)' }}>
         Skip to content
       </a>
       {/* Announced politely so a screen-reader user hears new alarms without
@@ -57,21 +76,30 @@ export function App() {
 
       <Sidebar />
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar theme={theme} onTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} />
-        <main id="workspace" className="min-h-0 flex-1 overflow-auto">
+      <main id="workspace" className="grid min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden">
+        <RailCompact />
+        <StatusStrip />
+        <div className="min-w-0 overflow-y-auto overflow-x-hidden">
           <Routes>
-            <Route path="/" element={<Territory />} />
-            <Route path="/fleet" element={<Fleet />} />
+            <Route path="/" element={<Territory selected={selected} onSelect={select} />} />
+            <Route path="/fleet" element={<Fleet selected={selected} onSelect={select} />} />
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/diagnostics" element={<Diagnostics />} />
             <Route path="/events/:eventId" element={<Diagnostics />} />
-            <Route path="/machines/:machineId" element={<MachinePage />} />
+            <Route path="/machines/:machineId" element={<MachineRedirect />} />
             <Route path="/model" element={<Model />} />
-            <Route path="*" element={<Territory />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </main>
-      </div>
+        </div>
+      </main>
+
+      {selected && <Inspector id={selected} onClose={() => select(null)} />}
     </div>
   )
+}
+
+/** The machine view is a drawer now, not a page. Old links still resolve. */
+function MachineRedirect() {
+  const { machineId } = useParams()
+  return <Navigate to={`/fleet?m=${machineId ?? ''}`} replace />
 }

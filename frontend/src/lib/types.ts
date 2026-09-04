@@ -100,6 +100,8 @@ export interface ModelCard {
   serving: { source: string; version: string; degraded: boolean }
   summary: {
     params: number
+    /** Fixed input grid the encoder sees, in samples. */
+    window: number
     best_epoch: number
     test: { model: string; accuracy: number; balanced_acc: number; macro_f1: number; weighted_f1: number }
     conformal: { alpha: number; qhat: number; coverage: number; mean_set_size: number }

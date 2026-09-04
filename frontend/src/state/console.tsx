@@ -2,12 +2,16 @@ import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from 'react'
 import { api, useStream } from '../lib/api'
-import type { Alert, EventSummary, Machine, Stats } from '../lib/types'
+import type { Alert, EventSummary, Machine, ModelCard, Stats } from '../lib/types'
 
 type AlertAction = 'acknowledge' | 'resolve' | 'reopen'
 
 interface ConsoleValue {
   stats: Stats | null
+  /** The serving model's own card. Fetched once — it changes only when the
+   *  API restarts — and shared so the rail can state what is serving on every
+   *  page without every page asking for it. */
+  model: ModelCard | null
   machines: Machine[]
   events: EventSummary[]
   alerts: Alert[]
@@ -41,6 +45,7 @@ function mergeAlerts(fresh: Alert[], prev: Alert[], pending: Set<string>): Alert
  */
 export function ConsoleProvider({ children }: { children: React.ReactNode }) {
   const [stats, setStats] = useState<Stats | null>(null)
+  const [model, setModel] = useState<ModelCard | null>(null)
   const [machines, setMachines] = useState<Machine[]>([])
   const [events, setEvents] = useState<EventSummary[]>([])
   const [alerts, setAlerts] = useState<Alert[]>([])
@@ -57,6 +62,9 @@ export function ConsoleProvider({ children }: { children: React.ReactNode }) {
     ])
     setStats(s); setMachines(m); setEvents(e); setAlerts(a)
     setBootError(null)
+    // Not awaited with the rest: a missing experiment artefact should leave the
+    // rail's serving block blank, never hold up the whole console.
+    void api.model().then(setModel).catch(() => {})
   }, [])
 
   // The API loads torch and the model weights, which takes a while. A single
@@ -108,12 +116,12 @@ export function ConsoleProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const value = useMemo<ConsoleValue>(() => ({
-    stats, machines, events, alerts,
+    stats, model, machines, events, alerts,
     openAlerts: alerts.filter((a) => a.state === 'open'),
     recent, connected, bootError, onAlertAction,
     eventsFor: (id) => (id ? events.filter((e) => e.machine_id === id) : events),
     machine: (id) => machines.find((m) => m.id === id) ?? null,
-  }), [stats, machines, events, alerts, recent, connected, bootError, onAlertAction])
+  }), [stats, model, machines, events, alerts, recent, connected, bootError, onAlertAction])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

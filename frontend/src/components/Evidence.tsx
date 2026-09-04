@@ -9,72 +9,82 @@ interface Props {
 /**
  * Local attribution.
  *
- * Bars diverge from a centre line so the *direction* of evidence is readable at
- * a glance — supporting the diagnosis, or arguing against it — and hovering one
+ * Bars diverge from a zero line so the *direction* of evidence reads at a
+ * glance — supporting the verdict, or arguing against it — and hovering one
  * lights the waveform phase it came from.
  *
- * The measured value and the contribution are shown as separate columns on
- * purpose. Previously the bar length encoded contribution while the only number
- * on the row was the measured value, so a long bar sat beside "170.00" and read
- * as if the bar meant 170. Two quantities in one row with one label is how a
- * chart misleads without ever being wrong.
+ * The measured value and the contribution are separate columns on purpose.
+ * They were briefly the same number, which is how a chart misleads without
+ * ever being wrong: a long bar sat beside "188.00" and read as if the bar
+ * meant 188. The bar is a signed z-score against healthy operation; the column
+ * is the measurement in its own units.
+ *
+ * The zero line is placed from the data rather than fixed, so a set of
+ * attributions that is entirely one-signed uses the full width instead of
+ * cramming into a quarter of it.
  */
 export function Evidence({ attributions, onHover }: Props) {
   if (!attributions.length) {
-    return <p className="t-label text-ink-faint">No attribution available for this event.</p>
+    return <p className="text-[12px]" style={{ color: 'var(--color-label)' }}>No attribution available for this event.</p>
   }
-  const max = Math.max(1e-6, ...attributions.map((a) => Math.abs(a.contribution)))
+
+  const maxPos = Math.max(0, ...attributions.map((a) => a.contribution))
+  const maxNeg = Math.max(0, ...attributions.map((a) => -a.contribution))
+  const span = maxPos + maxNeg || 1
+  // Clamped so a single tiny counter-signal still leaves a readable stub of
+  // track on its side of the line.
+  const zero = Math.min(85, Math.max(15, (maxNeg / span) * 100))
 
   return (
     <div onMouseLeave={() => onHover(null)}>
-      <div className="t-micro mb-2 grid grid-cols-[minmax(0,1fr)_88px_92px] items-center gap-3 text-ink-faint">
-        <span>Measurement</span>
-        <span className="text-right">Measured</span>
-        <span className="text-right">Contribution</span>
+      <div className="grid grid-cols-[minmax(0,1fr)_60px] gap-3.5 border-b px-[18px] pb-[5px] pt-[9px]"
+        style={{ borderColor: 'var(--color-hair)' }}>
+        <span className="cap" style={{ letterSpacing: '0.13em' }}>Measurement</span>
+        <span className="cap text-right" style={{ letterSpacing: '0.13em' }}>Value</span>
       </div>
 
-      <ul className="flex flex-col gap-1">
+      <ul>
         {attributions.map((a) => {
-          const frac = Math.abs(a.contribution) / max
           const supports = a.contribution >= 0
+          const w = supports
+            ? (maxPos ? (a.contribution / maxPos) * (100 - zero) : 0)
+            : (maxNeg ? (-a.contribution / maxNeg) * zero : 0)
+          const colour = supports ? 'var(--color-accent)' : 'var(--color-cyan)'
           return (
-            <li
-              key={a.feature}
+            <li key={a.feature}
               onMouseEnter={() => onHover(a.feature)}
-              className="grid grid-cols-[minmax(0,1fr)_88px_92px] items-center gap-3 rounded px-1 py-1 transition-colors duration-150 hover:bg-surface-2"
-            >
-              <div className="min-w-0">
-                <div className="t-label truncate text-ink-dim">{a.label}</div>
-                <div className="relative mt-1 h-1.5 rounded-full bg-surface-3">
-                  <div className="absolute inset-y-0 left-1/2 w-px bg-line-strong" />
-                  <div
-                    className="absolute inset-y-0 rounded-full transition-[width] duration-300"
+              className="grid h-[46px] grid-cols-[minmax(0,1fr)_60px] items-center gap-3.5 border-b px-[18px] transition-colors hover:bg-raised"
+              style={{ borderColor: 'var(--color-hair)' }}>
+              <span className="flex min-w-0 flex-col gap-1.5">
+                <span className="flex items-baseline justify-between gap-3">
+                  <span className="truncate text-[12px] leading-none" style={{ color: 'var(--color-ink-3)' }}>{a.label}</span>
+                  <span className="mono flex-none text-[11px] font-medium leading-none" style={{ color: colour }}
+                    title={supports ? 'Supports the verdict' : 'Argues against the verdict'}>
+                    {supports ? '+' : '−'}{num(Math.abs(a.contribution), 3)}
+                  </span>
+                </span>
+                <span className="relative block h-[5px]" style={{ background: 'var(--color-hair)' }}>
+                  <span className="absolute inset-y-0 w-px" style={{ left: `${zero}%`, background: 'var(--color-tick)' }} />
+                  <span className="absolute inset-y-0 transition-[width,left] duration-300"
                     style={{
-                      width: `${(frac * 50).toFixed(1)}%`,
-                      left: supports ? '50%' : undefined,
-                      right: supports ? undefined : '50%',
-                      background: supports ? 'var(--color-fault)' : 'var(--color-normal)',
-                    }}
-                  />
-                </div>
-              </div>
-              <span className="num t-label text-right text-ink-dim">{num(a.value)}</span>
-              <span
-                className="num t-label text-right"
-                style={{ color: supports ? 'var(--color-fault)' : 'var(--color-normal)' }}
-                title={supports ? 'Supports the diagnosis' : 'Argues against the diagnosis'}
-              >
-                {supports ? '+' : '−'}{num(Math.abs(a.contribution), 3)}
+                      left: `${supports ? zero : zero - w}%`,
+                      width: `${w}%`,
+                      background: colour,
+                    }} />
+                </span>
+              </span>
+              <span className="mono text-right text-[12px] font-medium leading-none" style={{ color: 'var(--color-dim)' }}>
+                {num(a.value)}
               </span>
             </li>
           )
         })}
       </ul>
 
-      <p className="t-label mt-3 text-ink-faint">
+      <p className="px-[18px] py-3 text-[11px] leading-[1.5]" style={{ color: 'var(--color-label)' }}>
         Bar length is the contribution, not the measurement.{' '}
-        <span style={{ color: 'var(--color-fault)' }}>Right</span> supports the diagnosis,{' '}
-        <span style={{ color: 'var(--color-normal)' }}>left</span> argues against it.
+        <span style={{ color: 'var(--color-accent)' }}>Right</span> supports the verdict,{' '}
+        <span style={{ color: 'var(--color-cyan)' }}>left</span> argues against it.
       </p>
     </div>
   )

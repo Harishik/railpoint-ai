@@ -215,3 +215,78 @@ independently, never inferred from one another.
 `ink-faint` originally measured **4.22 and failed**. It carries labels and
 metadata throughout the interface, so the token was lightened rather than the
 requirement waived.
+
+---
+
+# 2026-09-04 — Adopted the Claude Design handoff
+
+The console was rebuilt against the `Railway switch monitoring dashboard`
+handoff bundle (`RailPoint Console.dc.html`). That design supersedes the
+oklch-based system described above: it specifies one dark scheme in hex,
+square corners throughout, Instrument Sans for text and Geist Mono for every
+number, and a fixed 238 px rail beside a 62 px status strip.
+
+The prototype was recreated as specified with **three deliberate departures**,
+each because the prototype could not have known the constraint.
+
+## 1. Text contrast
+
+The prototype's grey text ramp runs `#8A99AC → #7C8CA0 → #6E7F94 → #5E6E82 →
+#4E5D70 → #3E4C5E → #3A4657`. Measured against the panel ground `#10151C`, the
+bottom four land at 3.59, 2.96, 2.21 and 2.00:1 — all below the 4.5:1 AA floor
+for the 9–11 px text they carry.
+
+The ramp is therefore compressed to three legible text tiers, with the darker
+greys kept **only for non-text marks**: hairline dividers, chart grid, the
+unset rail leg, the zero tick.
+
+| Token | Value | vs `--color-raised` | Floor |
+|---|---|---|---|
+| `ink-hi` | `#F2F6FB` | 15.81 | 4.5 |
+| `ink` | `#E7EDF4` | 14.56 | 4.5 |
+| `ink-2` | `#DCE5F0` | 13.49 | 4.5 |
+| `ink-3` | `#C4D0DE` | 10.97 | 4.5 |
+| `ink-4` | `#B8C4D4` | 9.71 | 4.5 |
+| `dim` | `#8A99AC` | 5.91 | 4.5 |
+| `body` | `#7C8CA0` | 5.00 | 4.5 |
+| `label` | `#76889D` | **4.72** | 4.5 |
+| `accent` | `#FF5A36` | 5.53 | 4.5 |
+
+Measured in the running app against `--color-raised` (`#141C26`) — the row-hover
+state, and the darkest ground any of these ever sits on. Clearing the floor
+there clears it on every other surface.
+
+`--color-label` is the prototype's `#6E7F94` lifted three steps. At the original
+value it measured 4.47:1 on a panel and **4.19:1 on a hovered row**, and it
+carries every column caption in the console. Reversed-out text on the state
+fills — `--color-bg` on accent, amber, green, cyan — measures 6.19 to 10.33:1.
+
+## 2. Focus
+
+The prototype has no focus treatment of any kind. A console operable only by
+mouse is not shippable, so focus rings are restored: a 2 px accent outline at
+1 px offset, never removed, only made deliberate.
+
+## 3. Narrow viewports
+
+The design specifies a desktop console and nothing below it. Hiding the rail
+below `lg` left the app with **no reachable navigation at all** — the links were
+present in the DOM inside a `display:none` aside. `RailCompact` folds the same
+five sections, keeping their numbering, onto one scrollable line.
+
+## What was dropped, and why
+
+- **The light theme.** The handoff defines a single dark scheme. Keeping a light
+  mode would mean inventing a second palette the design does not specify, so the
+  console is dark-only.
+- **Link uptime and per-throw inference latency** from the status strip. Neither
+  is instrumented. Rather than print a plausible number, the strip carries only
+  measured values: open alerts, throws seen, mean throw length, time since the
+  last throw, stream cadence.
+- **The copilot's maintenance history** ("Replaced line relay on PMD007 · 3d").
+  Nothing records maintenance actions. A fabricated maintenance record is the
+  one thing on that page that could get somebody hurt.
+- **The prototype's fixed 22 % zero line** in the evidence bars. Our
+  contributions are signed z-scores and are frequently one-signed; the zero is
+  placed from the data so the bars use the full width instead of crowding into a
+  quarter of it.
