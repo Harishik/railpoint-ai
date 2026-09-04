@@ -104,7 +104,17 @@ export interface ModelCard {
     window: number
     best_epoch: number
     test: { model: string; accuracy: number; balanced_acc: number; macro_f1: number; weighted_f1: number }
-    conformal: { alpha: number; qhat: number; coverage: number; mean_set_size: number }
+    conformal: {
+      alpha: number; qhat: number; coverage: number; mean_set_size: number
+      /** How many held-out events the bare threshold rule would leave with no
+       *  label at all. Measured against the raw rule, not the served set, which
+       *  always contains the argmax. */
+      threshold_empty_sets?: number
+      calib_events?: number
+      calib_machines?: number
+      /** Which split the quantile was fitted on. Never the one early stopping used. */
+      calib_split?: string
+    }
     rul: { n: number; rmse: number; mae: number; interval_halfwidth: number; coverage: number }
     anomaly: { roc_auc: number; positive_rate: number }
     acceptance: {

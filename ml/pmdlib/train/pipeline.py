@@ -66,11 +66,18 @@ def _normal_reference() -> dict[str, np.ndarray]:
     Computed from the stratified sweep's NORMAL class only, so a deviation
     measured against it answers "how unusual is this reading for a machine that
     is working", which is the question an operator is actually asking.
+
+    Restricted to the **train** split. This reference is persisted into
+    `calibration.npz` and ships with the model, so fitting it over every split
+    would put held-out machines into a serving artefact. It drives explanation
+    rather than prediction, so nothing reported today would move — but "the
+    number is only used for display" is exactly the argument that lets test data
+    leak into a shipped file.
     """
     from ..data import load
     from ..features import FEATURE_NAMES
 
-    ds = load("stratified")
+    ds = load("stratified").split("train")
     if ds.features is None:
         return {"normal_mean": np.zeros(0), "normal_std": np.zeros(0)}
     healthy = ds.features[(ds.meta.fault == "NORMAL").to_numpy()]
@@ -95,10 +102,10 @@ def run(cfg: TrainConfig | None = None, threads: int | None = None) -> dict:
     print(f"[1/6] training  (threads={torch.get_num_threads()})")
     model, info = train(cfg)
 
-    print("[2/6] inference on val / test / real")
+    print("[2/6] inference on calib / test / real")
     strat, fleet = load("stratified", with_features=False), load("fleet", with_features=False)
     parts = {}
-    for split in ("val", "test"):
+    for split in ("calib", "test"):
         s, f = strat.split(split), fleet.split(split)
         signals = np.concatenate([s.signals, f.signals])
         lengths = np.concatenate([s.lengths, f.lengths])
@@ -107,17 +114,50 @@ def run(cfg: TrainConfig | None = None, threads: int | None = None) -> dict:
     real = load_real()
     real_out = infer(model, real.signals, real.lengths)
 
-    print("[3/6] conformal calibration on val")
-    val_out, val_meta = parts["val"]
-    y_val = val_meta.fault.map({c: i for i, c in enumerate(CLASS_ORDER)}).to_numpy()
-    cc = ConformalClassifier(alpha=0.1).fit(val_out["probs"], y_val)
-
-    has_rul = val_meta.rul.fillna(CENSORED).to_numpy() > CENSORED if "rul" in val_meta else np.zeros(len(val_meta), bool)
-    ci = None
-    if has_rul.any():
-        ci = ConformalInterval(alpha=0.1).fit(
-            val_out["rul"][has_rul], val_meta.rul.to_numpy()[has_rul].astype(float)
+    # Calibration runs on `calib`, a split the model was neither trained on nor
+    # selected on. It used to run on `val` — the split early stopping uses to
+    # pick the checkpoint — which is precisely the dependency conformal
+    # prediction's exchangeability assumption forbids: the chosen epoch is the
+    # one that fits `val` best, so the scores there understate the error the
+    # model makes on fresh data and the quantile comes out too small.
+    print("[3/6] conformal calibration on the held-out calib split")
+    cal_out, cal_meta = parts["calib"]
+    if len(cal_meta) == 0:
+        raise RuntimeError(
+            "the calib split is empty - conformal calibration would silently "
+            "fall back to a meaningless quantile. Check pmdlib.utils.splits."
         )
+    y_cal = cal_meta.fault.map({c: i for i, c in enumerate(CLASS_ORDER)}).to_numpy()
+    cc = ConformalClassifier(alpha=0.1).fit(cal_out["probs"], y_cal)
+    print(f"      {len(cal_meta):,} events from "
+          f"{cal_meta.machine_id.nunique()} machines, qhat={cc.qhat:.4f}")
+
+    # An RUL interval needs *uncensored* targets — events with a failure ahead of
+    # them. Those are rare and clustered by machine: only 11 of the 64 simulated
+    # machines ever reach one. A calibration split can therefore contain
+    # thousands of events and still be unable to calibrate an interval, which is
+    # exactly what happened on the first run of this fix. It failed *silently* —
+    # `ci` stayed None, the RUL block vanished from the summary and `rul_qhat`
+    # was written as NaN, so the console quietly stopped showing intervals while
+    # still describing them. Fail loudly instead.
+    ci = None
+    rul_machines = 0
+    if "rul" in cal_meta:
+        has_rul = cal_meta.rul.fillna(CENSORED).to_numpy() > CENSORED
+        if not has_rul.any():
+            raise RuntimeError(
+                f"the calib split has {len(cal_meta):,} events but not one uncensored "
+                "RUL target, so no conformal interval can be fitted. Shipping without "
+                "one silently is how the console came to claim a 90% interval it did "
+                "not have. Rebalance the split in pmdlib.utils.splits so calibration "
+                "receives machines that reach a failure."
+            )
+        rul_machines = int(cal_meta.machine_id[has_rul].nunique())
+        ci = ConformalInterval(alpha=0.1).fit(
+            cal_out["rul"][has_rul], cal_meta.rul.to_numpy()[has_rul].astype(float)
+        )
+        print(f"      RUL interval from {int(has_rul.sum()):,} uncensored targets "
+              f"across {rul_machines} machine(s)")
 
     print("[4/6] anomaly scorer on normal training embeddings")
     tr_s, tr_f = strat.split("train"), fleet.split("train")
@@ -140,8 +180,21 @@ def run(cfg: TrainConfig | None = None, threads: int | None = None) -> dict:
         "conformal": {
             "alpha": cc.alpha,
             "qhat": round(cc.qhat, 4),
+            # Fitted on `calib`, measured on `test`. Reporting coverage on the
+            # split the quantile was fitted to would be circular by construction.
             "coverage": round(cc.coverage(test_out["probs"], y_test), 4),
             "mean_set_size": round(float(cc.set_sizes(test_out["probs"]).mean()), 3),
+            # How often the bare threshold `p >= 1 - qhat` names no label at
+            # all. Measured against the raw rule on purpose: `set_sizes` forces
+            # the argmax in, so counting empties there would be a tautology that
+            # always reports zero. This is the diagnostic that made the old
+            # mean_set_size come out below 1.
+            "threshold_empty_sets": int(
+                ((test_out["probs"] >= 1.0 - cc.qhat).sum(axis=1) == 0).sum()
+            ),
+            "calib_events": int(len(cal_meta)),
+            "calib_machines": int(cal_meta.machine_id.nunique()),
+            "calib_split": "calib",
         },
     }
 
@@ -155,6 +208,11 @@ def run(cfg: TrainConfig | None = None, threads: int | None = None) -> dict:
             "mae": round(float(np.mean(np.abs(pred_rul - true_rul))), 2),
             "interval_halfwidth": round(ci.qhat, 1),
             "coverage": round(ci.coverage(pred_rul, true_rul), 4),
+            # The number that says how much the interval is worth. Conformal
+            # coverage is a marginal guarantee over exchangeable draws; with
+            # splits by machine, one calibration machine means the quantile is
+            # one machine's error profile, not the fleet's.
+            "calib_machines": rul_machines,
         }
 
     anomaly_test = scorer.score(test_out["embedding"])

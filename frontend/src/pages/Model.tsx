@@ -128,7 +128,16 @@ export function Model() {
                 { k: 'TARGET COVERAGE', v: `${((1 - s.conformal.alpha) * 100).toFixed(0)}%`, c: 'var(--color-ink-2)' },
                 { k: 'EMPIRICAL COVERAGE', v: `${(s.conformal.coverage * 100).toFixed(1)}%`, c: 'var(--color-amber)' },
                 { k: 'MEAN SET SIZE', v: s.conformal.mean_set_size.toFixed(3), c: s.conformal.mean_set_size < 1 ? 'var(--color-accent)' : 'var(--color-ink-2)' },
-                { k: 'PARAMETERS', v: s.params.toLocaleString(), c: 'var(--color-ink-2)' },
+                // Which split the quantile was fitted on is part of whether the
+                // number above means anything, so it sits beside it rather than
+                // in a footnote.
+                {
+                  k: 'CALIBRATED ON',
+                  v: s.conformal.calib_events
+                    ? `${s.conformal.calib_events.toLocaleString()} held out`
+                    : '—',
+                  c: 'var(--color-ink-2)',
+                },
               ].map((c) => (
                 <div key={c.k} className="flex flex-col gap-[7px] border-b border-r px-[18px] py-4" style={{ borderColor: 'var(--color-edge)' }}>
                   <span className="cap">{c.k}</span>
@@ -139,8 +148,10 @@ export function Model() {
             <div className="flex flex-col justify-center gap-[11px] p-[18px]">
               <div className="flex items-baseline justify-between">
                 <span className="cap">Coverage vs target</span>
-                <span className="mono text-[11px] font-medium leading-none" style={{ color: 'var(--color-amber)' }}>
-                  {((s.conformal.coverage - (1 - s.conformal.alpha)) * 100).toFixed(1)} pt
+                <span className="mono text-[11px] font-medium leading-none"
+                  style={{ color: s.conformal.coverage < 1 - s.conformal.alpha ? 'var(--color-accent)' : 'var(--color-amber)' }}>
+                  {s.conformal.coverage >= 1 - s.conformal.alpha ? '+' : '−'}
+                  {Math.abs((s.conformal.coverage - (1 - s.conformal.alpha)) * 100).toFixed(1)} pt
                 </span>
               </div>
               <div className="relative h-[22px]" style={{ background: 'var(--color-deep)', border: '1px solid var(--color-line)' }}>
@@ -157,18 +168,37 @@ export function Model() {
                 </div>
               </div>
               <span className="text-[11px] leading-[1.5]" style={{ color: 'var(--color-label)' }}>
-                Target {((1 - s.conformal.alpha) * 100).toFixed(0)}% marked in amber. Under-coverage means the
-                set is narrower than advertised.
+                Target {((1 - s.conformal.alpha) * 100).toFixed(0)}% marked in amber.{' '}
+                {s.conformal.coverage < 1 - s.conformal.alpha
+                  ? 'Under-coverage means the set is narrower than advertised.'
+                  : 'Over-coverage is safe but means the sets are wider than the target requires.'}
+                {s.conformal.calib_machines != null && (
+                  <>
+                    {' '}Fitted on <span className="mono" style={{ color: 'var(--color-dim)' }}>{s.conformal.calib_split ?? 'calib'}</span>{' '}
+                    ({s.conformal.calib_machines} machines the model was neither trained on nor selected on),
+                    measured on <span className="mono" style={{ color: 'var(--color-dim)' }}>test</span>.
+                  </>
+                )}
               </span>
             </div>
           </div>
-          {s.conformal.mean_set_size < 1 && (
+          {s.conformal.mean_set_size <= 1.0001 && (
             <Callout tone="defect">
-              <strong className="font-semibold" style={{ color: 'var(--color-accent)' }}>Known defect.</strong>{' '}
-              A mean set size below 1 means some events receive an{' '}
-              <em className="not-italic" style={{ color: 'var(--color-accent)' }}>empty</em> prediction set — the
-              conformal threshold has collapsed. Calibration currently shares the validation split used for
-              early stopping, which breaks the exchangeability the guarantee rests on.
+              <strong className="font-semibold" style={{ color: 'var(--color-accent)' }}>Not earning its keep.</strong>{' '}
+              Every set is exactly one label, so coverage ({(s.conformal.coverage * 100).toFixed(2)}%) equals
+              top-1 accuracy ({(s.test.accuracy * 100).toFixed(2)}%) — the conformal layer is contributing
+              nothing over plain argmax. No set ever widens, so set size cannot be the off-distribution signal;
+              the anomaly head is. The fix is an adaptive score function (APS/RAPS) that sizes sets by
+              difficulty rather than by a fixed threshold.
+            </Callout>
+          )}
+          {(s.conformal.threshold_empty_sets ?? (s.conformal.mean_set_size < 1 ? 1 : 0)) > 0 && (
+            <Callout tone="defect">
+              <strong className="font-semibold" style={{ color: 'var(--color-amber)' }}>Worth knowing.</strong>{' '}
+              On <span className="mono">{s.conformal.threshold_empty_sets}</span> held-out events the bare
+              threshold <span className="mono">p ≥ 1 − q̂</span> names no label at all. Both the serving path
+              and the conformal wrapper force the argmax in, so nothing renders empty in the console — but
+              that many events sit close enough to the threshold to be worth watching.
             </Callout>
           )}
         </Panel>

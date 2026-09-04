@@ -97,18 +97,28 @@ export function Inspector({ id, onClose }: { id: string; onClose: () => void }) 
           ) : (
             <>
               <div className="relative h-[26px]" style={{ background: 'var(--color-deep)', border: '1px solid var(--color-line)' }}>
-                <div className="absolute inset-y-0" style={{
-                  left: pct(m.health.rul_low),
-                  width: `calc(${pct(m.health.rul_high)} - ${pct(m.health.rul_low)})`,
-                  background: 'rgba(79,184,232,.18)',
-                }} />
+                {m.health.rul_low != null && m.health.rul_high != null && (
+                  <div className="absolute inset-y-0" style={{
+                    left: pct(m.health.rul_low),
+                    width: `calc(${pct(m.health.rul_high)} - ${pct(m.health.rul_low)})`,
+                    background: 'rgba(79,184,232,.18)',
+                  }} />
+                )}
                 <div className="absolute -top-[3px] -bottom-[3px] w-0.5" style={{ left: pct(rul), background: colour }} />
               </div>
-              <div className="mono flex justify-between text-[10px] leading-none" style={{ color: 'var(--color-label)' }}>
-                <span>{num(m.health.rul_low, 0)}</span>
-                <span style={{ color: 'var(--color-ink-4)' }}>{num(rul, 0)} throws</span>
-                <span>{num(m.health.rul_high, 0)}</span>
-              </div>
+              {m.health.rul_low != null && m.health.rul_high != null ? (
+                <div className="mono flex justify-between text-[10px] leading-none" style={{ color: 'var(--color-label)' }}>
+                  <span>{num(m.health.rul_low, 0)}</span>
+                  <span style={{ color: 'var(--color-ink-4)' }}>{num(rul, 0)} throws</span>
+                  <span>{num(m.health.rul_high, 0)}</span>
+                </div>
+              ) : (
+                // The heading above says "90% interval". If none is being
+                // served, say so rather than let the bar imply one.
+                <p className="text-[11px] leading-[1.5]" style={{ color: 'var(--color-amber)' }}>
+                  {num(rul, 0)} throws — point estimate only. No calibrated interval is being served.
+                </p>
+              )}
             </>
           )}
         </div>

@@ -13,7 +13,7 @@ from dataclasses import dataclass, replace
 import numpy as np
 import pandas as pd
 
-from ..utils.splits import machine_split
+from ..utils.splits import DEFAULT_FRACS, machine_split
 from .degradation import (
     Trajectory,
     severity_from_health,
@@ -55,7 +55,7 @@ class DatasetConfig:
     max_samples: int = 600
     seed: int = 42
     #: Fractions of *machines* assigned to each split.
-    split_fracs: tuple[float, float, float] = (0.70, 0.15, 0.15)
+    split_fracs: tuple[float, float, float, float] = DEFAULT_FRACS
 
 
 def seasonal_environment(cycle: int, cycles_per_year: int, rng: np.random.Generator) -> Environment:
@@ -91,7 +91,7 @@ def _make_machine_specs(cfg: DatasetConfig, rng: np.random.Generator) -> list[Ma
     return specs
 
 
-def _assign_splits(n: int, fracs: tuple[float, float, float], _rng: object = None) -> np.ndarray:
+def _assign_splits(n: int, fracs: tuple[float, float, float, float], _rng: object = None) -> np.ndarray:
     """Split by machine id, not at random - see pmdlib.utils.splits."""
     return np.array([machine_split(f"PMD{i + 1:03d}", fracs) for i in range(n)])
 
@@ -235,7 +235,7 @@ class StratifiedConfig:
     unit_spread: float = 0.06
     max_samples: int = 600
     seed: int = 7
-    split_fracs: tuple[float, float, float] = (0.70, 0.15, 0.15)
+    split_fracs: tuple[float, float, float, float] = DEFAULT_FRACS
 
 
 def _health_for(fault: FaultClass, severity: float, rng: np.random.Generator) -> float:

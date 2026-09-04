@@ -3,26 +3,31 @@
   "best_epoch": 26,
   "test": {
     "model": "PointMachineNet",
-    "accuracy": 0.9777,
-    "balanced_acc": 0.9143,
-    "macro_f1": 0.9289,
-    "weighted_f1": 0.9756
+    "accuracy": 0.9779,
+    "balanced_acc": 0.9156,
+    "macro_f1": 0.9304,
+    "weighted_f1": 0.9759
   },
   "conformal": {
     "alpha": 0.1,
-    "qhat": 0.0112,
-    "coverage": 0.8931,
-    "mean_set_size": 0.895
+    "qhat": 0.0085,
+    "coverage": 0.9779,
+    "mean_set_size": 1.0,
+    "threshold_empty_sets": 1476,
+    "calib_events": 4711,
+    "calib_machines": 5,
+    "calib_split": "calib"
   },
   "rul": {
     "n": 1567,
-    "rmse": 145.27,
-    "mae": 110.97,
-    "interval_halfwidth": 240.0,
-    "coverage": 0.8979
+    "rmse": 149.63,
+    "mae": 114.12,
+    "interval_halfwidth": 239.7,
+    "coverage": 0.8813,
+    "calib_machines": 1
   },
   "anomaly": {
-    "roc_auc": 0.994,
+    "roc_auc": 0.9936,
     "positive_rate": 0.25
   },
   "acceptance": {

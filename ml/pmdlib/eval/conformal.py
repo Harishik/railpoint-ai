@@ -27,7 +27,13 @@ import numpy as np
 
 @dataclass
 class ConformalClassifier:
-    """Split-conformal wrapper. Fit on a calibration split, never on train."""
+    """Split-conformal wrapper.
+
+    Fit on the dedicated ``calib`` split — never on train, and never on the
+    ``val`` split used for early stopping. Calibrating on the data that chose
+    the checkpoint makes the scores optimistic and the quantile too small, which
+    is under-coverage dressed up as confidence.
+    """
 
     alpha: float = 0.1
     qhat: float = 1.0
@@ -47,8 +53,23 @@ class ConformalClassifier:
         return self
 
     def predict_set(self, probs: np.ndarray) -> np.ndarray:
-        """Boolean ``(n, n_classes)`` mask of labels inside the prediction set."""
-        return probs >= (1.0 - self.qhat)
+        """Boolean ``(n, n_classes)`` mask of labels inside the prediction set.
+
+        The plain threshold rule ``p >= 1 - qhat`` can return **nothing**. On an
+        accurate model almost every calibration score is near zero, so the
+        quantile lands near zero too and the threshold sits just under 1.0; any
+        event whose top probability falls below it gets an empty set. That is
+        not a cautious answer, it is a broken one — the console has to render
+        "the model believes no fault, and also not normal".
+
+        The argmax is therefore always included. This can only *add* labels, so
+        the marginal guarantee is a lower bound that still holds: forcing a
+        label in raises empirical coverage, never lowers it.
+        """
+        chosen = probs >= (1.0 - self.qhat)
+        top = probs.argmax(axis=1)
+        chosen[np.arange(len(probs)), top] = True
+        return chosen
 
     def set_sizes(self, probs: np.ndarray) -> np.ndarray:
         return self.predict_set(probs).sum(axis=1)

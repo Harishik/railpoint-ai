@@ -103,15 +103,26 @@ export function Fleet({ selected, onSelect }: { selected: string | null; onSelec
                       <>
                         <span className="relative h-3.5 w-24 flex-none">
                           <span className="absolute inset-x-0 top-1.5 h-0.5" style={{ background: 'var(--color-line)' }} />
-                          <span className="absolute top-[5px] h-1" style={{
-                            left: pct(m.health.rul_low),
-                            width: `calc(${pct(m.health.rul_high)} - ${pct(m.health.rul_low)})`,
-                            background: colour, opacity: 0.32,
-                          }} />
+                          {/* No calibrated interval means no band — drawing a
+                              zero-width one under a header that promises a 90%
+                              interval would state a bound we do not have. */}
+                          {m.health.rul_low != null && m.health.rul_high != null && (
+                            <span className="absolute top-[5px] h-1" style={{
+                              left: pct(m.health.rul_low),
+                              width: `calc(${pct(m.health.rul_high)} - ${pct(m.health.rul_low)})`,
+                              background: colour, opacity: 0.32,
+                            }} />
+                          )}
                           <span className="absolute top-px h-3 w-0.5" style={{ left: pct(m.health.rul_cycles), background: colour }} />
                         </span>
                         <span className="mono text-[12px] font-medium leading-none" style={{ color: 'var(--color-ink-2)' }}>
                           {num(m.health.rul_cycles, 0)}
+                          {m.health.rul_low == null && (
+                            <span className="ml-1 text-[10px]" style={{ color: 'var(--color-label)' }}
+                              title="Point estimate only — no calibrated interval is being served">
+                              ±?
+                            </span>
+                          )}
                         </span>
                       </>
                     )}

@@ -46,6 +46,17 @@ Splits are **by machine**, assigned by hashing the machine id so both datasets
 agree. Two throws from one machine minutes apart are near-duplicates; splitting
 on events would leak.
 
+There are **four** splits, not three: `train` (70%), `val` (7.5%), `calib`
+(7.5%) and `test` (15%). `val` selects the checkpoint; `calib` exists only so
+conformal calibration has data the model was neither trained on nor selected on.
+Fitting the conformal quantile on `val` — which this pipeline used to do —
+breaks the exchangeability the coverage guarantee rests on: early stopping keeps
+the epoch that fits `val` best, so the scores measured there understate the
+error on fresh data and the quantile comes out too small. The `calib` band is
+carved out of the former `val` range, so `train` and `test` membership is
+unchanged and every metric measured on `test` stays comparable across the
+change.
+
 The generator is validated against the real traces in CI (per-channel Wasserstein
 and per-event structural statistics). If it drifts, the build fails.
 
@@ -59,26 +70,59 @@ Every metric states which data produced it.
   reported, not scored, because their maintenance code names a component that
   their capture does not show.
 
-Conformal prediction supplies distribution-free 90% coverage. A prediction set of
-size one is an actionable diagnosis; size four is the model saying "one of these",
-which is honest and still useful. Widening sets on a machine indicate the model
-is off its training distribution.
+Conformal prediction supplies distribution-free 90% coverage, calibrated on
+`calib` and measured on `test`.
+
+**It is not currently earning its keep, and the honest reading is on this page
+rather than in a footnote.** With the plain threshold score `p ≥ 1 − q̂`, an
+accurate model drives almost every calibration score to zero, so the quantile
+lands near zero and the sets collapse: `mean_set_size` is **1.000** and empirical
+coverage (**0.9779**) equals top-1 accuracy (**0.9779**) *exactly*, because every
+set is the argmax alone. An earlier version of this card claimed that widening
+sets on a machine flag it as off-distribution. That is a real property of
+conformal prediction but **not of this configuration**, where no set ever widens.
+The fix is an adaptive score function (APS/RAPS) that sizes sets by difficulty;
+until then the anomaly head, not set size, is the off-distribution signal.
+
+A set can never come back **empty**. The bare threshold rule `p >= 1 - q̂` can
+exclude every label when the model is accurate enough to drive the quantile near
+zero, which renders as "not a fault, and also not normal" — not a cautious
+answer but a broken one. The argmax is always included; that can only add
+labels, so the coverage guarantee, being a lower bound, still holds.
+
+The residual caveat is **grouped** exchangeability: splits are by machine, so
+events within a machine are correlated and calibration/test points are exchangeable
+at the machine level rather than the event level. That is the right trade — an
+event-level split would leak outright — but it means the guarantee is
+approximate in a way the nominal 90% does not advertise.
 
 ## Limitations
 
-1. **Trained on simulated data.** Headline numbers describe performance on a
+1. **The RUL interval rests on one machine.** A conformal interval needs
+   *uncensored* targets — events with a failure ahead of them inside the
+   horizon. Only **11 of the 64** simulated machines ever reach one, and exactly
+   **one** of those falls outside the training split into the band available for
+   calibration. So the "90% interval" is one machine's residual quantile, not
+   the fleet's. It is a valid split-conformal interval at the event level and
+   the coverage measured on held-out data is real, but the marginal guarantee
+   assumes exchangeability, and a single calibration machine gives no protection
+   against that machine being unrepresentative. Treat the interval as indicative
+   width, not as a fleet-wide guarantee. Fixing it properly means simulating
+   longer lifetimes so more machines fail in-horizon — a dataset change, not a
+   model change. See `docs/BUGS.md` RP-26.
+2. **Trained on simulated data.** Headline numbers describe performance on a
    generator calibrated to 7 real traces — not on an operational fleet.
-2. **Two machine types.** `PMD-B`'s healthy baseline is extrapolated: both real
+3. **Two machine types.** `PMD-B`'s healthy baseline is extrapolated: both real
    PMD055 events are faults, so no healthy PMD055 waveform exists to fit.
-3. **Sampling rate unverified.** It cannot be derived from the `duration` field
+4. **Sampling rate unverified.** It cannot be derived from the `duration` field
    and is not documented anywhere in the source material; the model indexes on
    sample number and any absolute timing is a stated assumption.
-4. **Seven real events** is far too few to estimate real-world accuracy. The
+5. **Seven real events** is far too few to estimate real-world accuracy. The
    acceptance test proves transfer is *possible*, not that it is *reliable*.
-5. **Attribution is a linear local approximation** when the fallback probe is
+6. **Attribution is a linear local approximation** when the fallback probe is
    serving, and a deviation-magnitude proxy for the encoder. Integrated gradients
    would be the honest upgrade.
-6. **No adversarial or drift testing.** A sensor fault that mimics a machine fault
+7. **No adversarial or drift testing.** A sensor fault that mimics a machine fault
    has not been studied.
 
 ## Ethical and operational considerations

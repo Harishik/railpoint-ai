@@ -132,22 +132,15 @@ export function Diagnostics() {
         <Panel title="Evidence" flush aside={<Note>CONTRIBUTION TO VERDICT</Note>}>
           {detail ? (
             <>
-              {pred && pred.set_size !== 1 && (
+              {/* A set can no longer come back empty — both the serving path and
+                  the conformal wrapper force the argmax in — so the only case
+                  left to explain is a genuine shortlist. */}
+              {pred && pred.set_size > 1 && (
                 <div className="border-b px-[18px] py-3 text-[12px] leading-[1.55]"
                   style={{ borderColor: 'var(--color-hair)', color: 'var(--color-dim)' }}>
-                  {pred.set_size === 0 ? (
-                    <>
-                      The 90% prediction set for this throw is <span style={{ color: 'var(--color-accent)' }}>empty</span> —
-                      the conformal threshold rejected every label. This is the calibration defect recorded on
-                      the Model page, not a reading about the machine.
-                    </>
-                  ) : (
-                    <>
-                      The model cannot separate{' '}
-                      <span style={{ color: 'var(--color-ink-2)' }}>{pred.prediction_set.map(faultLabel).join(', ')}</span>{' '}
-                      at 90% coverage. Treat this as a shortlist, not a diagnosis.
-                    </>
-                  )}
+                  The model cannot separate{' '}
+                  <span style={{ color: 'var(--color-ink-2)' }}>{pred.prediction_set.map(faultLabel).join(', ')}</span>{' '}
+                  at 90% coverage. Treat this as a shortlist, not a diagnosis.
                 </div>
               )}
               <Evidence attributions={detail.attributions} onHover={setHovered} />

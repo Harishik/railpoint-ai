@@ -56,6 +56,12 @@ RUL uses `-1` for **censored** samples — no failure ahead of them. That is not
 By **machine**, assigned by hashing the machine id, so `fleet` and `stratified`
 cannot disagree about which machines are held out.
 
+Four of them — `train` 70%, `val` 7.5%, `calib` 7.5%, `test` 15%. `val` selects
+the checkpoint and `calib` calibrates the conformal quantile; keeping them apart
+is what makes the coverage guarantee mean anything, since a quantile fitted on
+the split that chose the checkpoint is fitted on the model's best day. See
+`ml/pmdlib/utils/splits.py`.
+
 ## Known limitations
 
 1. `PMD-B`'s healthy baseline is **extrapolated**, not calibrated — both real
