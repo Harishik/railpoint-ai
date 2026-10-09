@@ -7,10 +7,9 @@ Detects and classifies faults in railway point machines from motor-current and
 indication-line signals, forecasts remaining useful life, explains every
 prediction, and serves it through a live operations console.
 
-<p align="center">
-  <a href="docs/media/railpoint-intro.mp4"><img src="docs/media/railpoint-intro-poster.jpg" width="560" alt="RailPoint intro film, click to play"></a>
-  <br><sub>▶ <a href="docs/media/railpoint-intro.mp4">Watch the 27-second intro</a> (MP4, with sound) · Sound effects: Kenney (MIT)</sub>
-</p>
+https://github.com/user-attachments/assets/433cacb7-e354-44f7-96fd-4726a1a7746e
+
+<sub>The 27-second intro. It has sound: unmute it in the player. Sound effects: Kenney (CC0).</sub>
 
 ![The Diagnostics workspace following the live feed: each new throw's motor
 current, supply and indication lines, segmented into the unlock, throw and lock
