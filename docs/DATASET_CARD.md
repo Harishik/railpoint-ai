@@ -7,8 +7,8 @@ Two generated datasets plus one small real extract held out as an acceptance tes
 | Dataset | Events | Machines | Balance | Purpose |
 |---|---|---|---|---|
 | `stratified` | 9,600 | 64 | exactly balanced, 640/class | classification |
-| `fleet` | 51,200 | 64 | ~16% anomalous | RUL, anomaly detection |
-| `sehwa` (real) | **7** | 2 | 100% faulty | acceptance test only |
+| `fleet` | 51,200 | 64 | 18.2% anomalous | RUL, anomaly detection |
+| `sehwa` (real, private) | **7** | 2 | 100% faulty | acceptance test only; not published |
 
 ## Why it is generated
 
@@ -40,6 +40,11 @@ physics. Scenario axes:
   intermittent, seasonal, infant mortality) with per-machine lifetimes drawn
   log-normally. Health is *generated*, so RUL ground truth is exact by
   construction — the one real advantage a simulator has here
+- **Service horizon** — each machine is simulated over 4,000 cycles, the same
+  horizon the live console uses, and 800 throws are recorded evenly across it.
+  Recording a sample of a whole life, rather than every throw of its first 800
+  cycles, is what lets 39 of 64 machines reach a failure — against 11 before —
+  so RUL is calibrated on several machines instead of one (RP-26).
 
 ## Fields
 

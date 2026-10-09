@@ -1,47 +1,47 @@
 {
   "params": 515217,
-  "best_epoch": 26,
+  "best_epoch": 25,
   "test": {
     "model": "PointMachineNet",
     "accuracy": 0.9779,
-    "balanced_acc": 0.9156,
-    "macro_f1": 0.9304,
-    "weighted_f1": 0.9759
+    "balanced_acc": 0.9558,
+    "macro_f1": 0.9539,
+    "weighted_f1": 0.9782
   },
   "conformal": {
     "alpha": 0.1,
     "rule": "raps",
     "qhat": 0.9999,
-    "coverage": 0.9969,
-    "mean_set_size": 1.125,
+    "coverage": 0.9972,
+    "mean_set_size": 1.179,
     "lam": 0.01,
     "k_reg": 1,
-    "singleton_rate": 0.8839,
-    "max_set_size": 6,
-    "coverage_when_wrong": 0.8611,
+    "singleton_rate": 0.835,
+    "max_set_size": 5,
+    "coverage_when_wrong": 0.8735,
     "error_rate": 0.0221,
-    "error_rate_singleton": 0.002,
-    "error_rate_widened": 0.1748,
-    "widened_lift": 7.91,
+    "error_rate_singleton": 0.0023,
+    "error_rate_widened": 0.1225,
+    "widened_lift": 5.54,
     "calib_events": 4711,
     "calib_machines": 5,
     "calib_split": "calib"
   },
   "rul": {
-    "n": 1567,
-    "rmse": 149.63,
-    "mae": 114.12,
-    "interval_halfwidth": 239.7,
-    "coverage": 0.8813,
-    "calib_machines": 1
+    "n": 3648,
+    "rmse": 616.54,
+    "mae": 454.07,
+    "interval_halfwidth": 1241.2,
+    "coverage": 0.9312,
+    "calib_machines": 4
   },
   "anomaly": {
-    "roc_auc": 0.9936,
-    "positive_rate": 0.25,
-    "healthy_calib_n": 3691,
-    "healthy_calib_p99": 138.0,
-    "healthy_calib_p999": 863.3,
-    "healthy_calib_max": 3995.3
+    "roc_auc": 0.9972,
+    "positive_rate": 0.373,
+    "healthy_calib_n": 3460,
+    "healthy_calib_p99": 213.9,
+    "healthy_calib_p999": 519.7,
+    "healthy_calib_max": 1492.5
   },
   "acceptance": {
     "diagnostic_correct": 1,

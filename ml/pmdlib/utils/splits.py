@@ -28,17 +28,17 @@ import hashlib
 #: (0.70, 0.15, 0.15) for train/val/test; the former val band is split down the
 #: middle, leaving the train and test bands untouched.
 #:
-#: `calib` takes the *first* half of that band and `val` the second. That
-#: ordering is deliberate and it was chosen knowing where it puts one particular
-#: machine, so it is stated rather than buried: only 11 of the 64 simulated
-#: machines ever reach a failure inside the horizon, and exactly one of them
-#: (PMD052, 533 uncensored events) falls in the val/calib band at all. Whichever
-#: half of the band it lands in is the only half that can calibrate an RUL
-#: interval, because a conformal interval needs uncensored targets.
+#: `calib` takes the *first* half of that band and `val` the second. The order
+#: was chosen knowing where it put one machine, so it is stated rather than
+#: buried: when the training fleet recorded only each machine's first 800
+#: throws, 11 of 64 machines reached a failure and exactly one of them (PMD052)
+#: fell in this band. A conformal RUL interval needs uncensored targets and
+#: early stopping does not — it selects on macro-F1 — so the band was ordered to
+#: give that machine to `calib`.
 #:
-#: Calibration needs them and early stopping does not — it selects on macro-F1
-#: over the fault head — so the band is ordered to give them to `calib`. See
-#: docs/BUGS.md RP-26 for why one machine is still not enough.
+#: Since RP-26 the fleet simulates whole service lives, and `calib` receives 4
+#: failing machines out of 5 on its own merits. The order no longer decides
+#: whether an interval can be fitted, and is kept so the split stays stable.
 DEFAULT_FRACS = (0.70, 0.075, 0.075, 0.15)
 SALT = "railpoint-v1"
 

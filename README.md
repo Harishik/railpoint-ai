@@ -39,7 +39,10 @@ than asserted to match it*:
 | `as_volt` | 0.0236 | 0.10 | | throw duration | 205.5 | 208.9 | 1.7% |
 | `output_n_volt` | 0.0104 | 0.10 | | capture length | 261.8 | 267.5 | 2.2% |
 
-This runs in CI. If the simulator drifts from the real signals, the build fails.
+This gate runs wherever the real traces are available, and fails the build if
+the simulator drifts from them. The traces are private (see
+[Data availability](#data-availability)), so on the public CI runner it
+reports itself as skipped rather than passed.
 
 **The 7 real events are never trained on.** They are the acceptance test.
 
@@ -80,7 +83,26 @@ Ranking on the synthetic test split alone would have shipped a model that gets
 every real fault wrong. Full analysis:
 [`experiments/results/baseline-findings.md`](experiments/results/baseline-findings.md).
 
-Deep-model results: [`experiments/results/deep-summary.json`](experiments/results/).
+### The deep model
+
+PointMachineNet — a 1D-CNN stem into a Transformer encoder with fault, RUL and
+anomaly heads, 515,217 parameters, trained on CPU. On held-out **simulated**
+machines:
+
+| | |
+|---|---|
+| Accuracy / balanced accuracy | **97.8%** / 95.6% |
+| Macro-F1, 15 classes | **0.954** |
+| Anomaly ROC-AUC | **0.997** |
+| Prediction sets (RAPS, 90% target) | 99.7% coverage; a one-label set is wrong 0.23% of the time, a shortlist 12.3% |
+| RUL, 90% interval | 93.1% coverage, ±1,241 throws — calibrated on 4 machines |
+
+And on the **7 real Sehwa captures**, never trained on: **1 of 3** scoreable
+faults identified, 5 of 7 events labelled correctly. Both PMD055 lock-latch
+faults come out as confident, wrong, one-label sets — and nothing in the system
+flags that ([RP-28](docs/BUGS.md)). The gap between those two paragraphs is the
+honest state of the project. Every number is read from
+[`experiments/results/deep-summary.json`](experiments/results/deep-summary.json).
 
 ## Architecture
 
@@ -97,8 +119,8 @@ capture ─► phase segmentation ─► 113 features ────────�
   amplitude does not transfer between machine classes but does carry signal.
 - **Conformal prediction sets you can act on — in distribution.** RAPS,
   calibrated on a dedicated `calib` split that early stopping never sees. On
-  held-out *simulated* machines 88.4% of throws get a single label, wrong 0.20% of
-  the time; the 11.6% that get a shortlist are wrong 17.5% of the time — 7.9× the
+  held-out *simulated* machines 83.5% of throws get a single label, wrong 0.23% of
+  the time; the 16.5% that get a shortlist are wrong 12.3% of the time — 5.5× the
   base rate. The plain threshold this replaced met its coverage target with every
   set exactly the argmax, so it never once flagged its own mistakes (RP-27).
   **It does not hold on shifted real data:** both real PMD055 errors are confident
@@ -109,12 +131,20 @@ capture ─► phase segmentation ─► 113 features ────────�
 
 ## Quick start
 
-```bash
-uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -e ".[dev,ml]"
-```
+The whole console — trained model, live feed, dashboard — in one container:
 
 ```bash
-.venv/bin/railpoint calibrate      # validate the simulator against real traces
+docker compose up --build
+```
+
+Then open **http://localhost:8000**. The first start takes about 30 seconds
+while torch and the model weights load. The trained network ships in
+`experiments/artifacts/`, so this serves the real model, not a fallback.
+
+### Developing
+
+```bash
+uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -e ".[dev,ml,api]"
 ```
 
 ```bash
@@ -122,10 +152,14 @@ uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -e ".[de
 ```
 
 ```bash
-.venv/bin/railpoint train          # train, calibrate, evaluate, export
+.venv/bin/railpoint train          # train, calibrate, evaluate, export (~1.5 h on CPU)
 ```
 
-Run the console — API on :8000, UI on :5173:
+```bash
+.venv/bin/railpoint recalibrate    # re-derive calibration from the existing weights (minutes)
+```
+
+API on :8000 and a hot-reloading UI on :5173:
 
 ```bash
 .venv/bin/uvicorn backend.app.main:app --port 8000
@@ -134,6 +168,26 @@ Run the console — API on :8000, UI on :5173:
 ```bash
 npm --prefix frontend install && npm --prefix frontend run dev
 ```
+
+## Data availability
+
+The seven real captures come from **Sehwa** (Daejeon), the capstone's industry
+partner, and are **not published**: the extract is gitignored, only its
+checksums are committed (`data/raw/sehwa/SHA256SUMS`), and it has been removed
+from this repository's history. Everything else is here.
+
+What that means in practice:
+
+| Needs the private extract | Runs from a clone |
+|---|---|
+| `railpoint calibrate` — the simulator calibration gate | `docker compose up` — the full console |
+| the real-data acceptance test | `railpoint build-data`, `train`, `recalibrate` |
+| refitting the waveform template (`scripts/fit_template.py`) | the whole test suite (gated tests skip, and say so) |
+
+The model *was* calibrated and acceptance-tested against the real captures; the
+results of that are committed in `experiments/results/`. A clone can reproduce
+every number except those two, which is the line between publishing a model and
+publishing someone else's data.
 
 ## Layout
 

@@ -11,13 +11,13 @@ held-out calib machine.
 
 | rule | coverage | worst_machine | mean_size | cov_when_wrong |
 |---|---|---|---|---|
-| thr | 0.9852 | 0.9687 | 1.000 | 0.0000 |
-| aps | 1.0000 | 1.0000 | 2.564 | 1.0000 |
-| raps λ=0.001 | 0.9994 | 0.9978 | 1.384 | 0.9533 |
-| raps λ=0.01 | 0.9979 | 0.9968 | 1.099 | 0.8333 |
-| raps λ=0.05 | 0.9954 | 0.9875 | 1.036 | 0.7200 |
-| raps λ=0.1 | 0.9939 | 0.9823 | 1.025 | 0.6417 |
-| raps λ=0.2 | 0.9911 | 0.9791 | 1.017 | 0.4350 |
+| thr | 0.9849 | 0.9838 | 1.000 | 0.0000 |
+| aps | 0.9998 | 0.9989 | 2.995 | 0.9857 |
+| raps λ=0.001 | 0.9992 | 0.9958 | 1.760 | 0.9429 |
+| raps λ=0.01 | 0.9975 | 0.9937 | 1.130 | 0.8295 |
+| raps λ=0.05 | 0.9953 | 0.9905 | 1.041 | 0.6886 |
+| raps λ=0.1 | 0.9940 | 0.9905 | 1.026 | 0.6038 |
+| raps λ=0.2 | 0.9913 | 0.9883 | 1.015 | 0.4210 |
 
 **Selected: `raps λ=0.01`.** The rule is the knee of the curve: keep raising the
 penalty while each step sheds more mean set size than it costs in coverage of
@@ -30,26 +30,26 @@ the outcome did not make the choice.
 
 | rule | qhat | coverage | mean_size | singletons | max_size | cov_when_wrong | err_widened | err_singleton | base_err |
 |---|---|---|---|---|---|---|---|---|---|
-| thr | 0.00853 | 0.9779 | 1.000 | 1.000 | 1 | 0.0000 | nan | 0.0221 | 0.0221 |
-| aps | 0.99986 | 0.9999 | 2.767 | 0.087 | 12 | 0.9960 | 0.0242 | 0.0000 | 0.0221 |
-| raps λ=0.001 | 0.99986 | 0.9990 | 1.522 | 0.524 | 7 | 0.9563 | 0.0452 | 0.0010 | 0.0221 |
-| raps λ=0.01 | 0.99986 | 0.9969 | 1.125 | 0.884 | 6 | 0.8611 | 0.1748 | 0.0020 | 0.0221 |
-| raps λ=0.05 | 0.99986 | 0.9936 | 1.044 | 0.958 | 4 | 0.7103 | 0.4021 | 0.0054 | 0.0221 |
-| raps λ=0.1 | 0.99986 | 0.9893 | 1.030 | 0.971 | 3 | 0.5159 | 0.4362 | 0.0095 | 0.0221 |
-| raps λ=0.2 | 0.99987 | 0.9844 | 1.017 | 0.983 | 2 | 0.2937 | 0.4588 | 0.0145 | 0.0221 |
+| thr | 0.01292 | 0.9779 | 1.000 | 1.000 | 1 | 0.0000 | nan | 0.0221 | 0.0221 |
+| aps | 0.99985 | 0.9998 | 3.043 | 0.124 | 14 | 0.9921 | 0.0253 | 0.0000 | 0.0221 |
+| raps λ=0.001 | 0.99987 | 0.9993 | 1.708 | 0.400 | 7 | 0.9684 | 0.0366 | 0.0004 | 0.0221 |
+| raps λ=0.01 | 0.99988 | 0.9972 | 1.179 | 0.835 | 5 | 0.8735 | 0.1225 | 0.0023 | 0.0221 |
+| raps λ=0.05 | 0.99988 | 0.9939 | 1.058 | 0.944 | 3 | 0.7233 | 0.3097 | 0.0052 | 0.0221 |
+| raps λ=0.1 | 0.99989 | 0.9922 | 1.040 | 0.961 | 3 | 0.6482 | 0.3956 | 0.0068 | 0.0221 |
+| raps λ=0.2 | 0.99989 | 0.9880 | 1.025 | 0.975 | 2 | 0.4585 | 0.4520 | 0.0113 | 0.0221 |
 
 ## Reading it
 
 - **`thr`** reaches the coverage target with every set exactly the argmax.
   `cov_when_wrong` is zero: when the model is wrong, the truth is never in the
   set. Marginal coverage cannot see this — it equals top-1 accuracy.
-- **`aps`** fixes that by overcorrecting: 8.7% of
+- **`aps`** fixes that by overcorrecting: 12.4% of
   sets are singletons, so a widened set is barely likelier to be wrong
-  (2.42%) than any throw (2.21%).
-- **`raps λ=0.01`**: 88.4% of sets are singletons and they are wrong
-  0.20% of the time; a widened set is wrong 17.48% of the time —
-  **7.9×** the base rate. When top-1 is wrong, the truth is still in
-  the set 86.1% of the time.
+  (2.53%) than any throw (2.21%).
+- **`raps λ=0.01`**: 83.5% of sets are singletons and they are wrong
+  0.23% of the time; a widened set is wrong 12.25% of the time —
+  **5.5×** the base rate. When top-1 is wrong, the truth is still in
+  the set 87.4% of the time.
 
 All candidates over-cover the 90% target. That is the safe direction, and
 expected: these are non-randomized scores on a model that is right 97.8% of the

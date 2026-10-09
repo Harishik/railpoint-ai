@@ -86,10 +86,10 @@ the set with classes the model gives almost no mass to. On held-out test machine
 
 | | share of throws | wrong |
 |---|---|---|
-| singleton set | 88.4% | **0.20%** |
-| widened set | 11.6% | **17.5%** — 7.9× the 2.21% base rate |
+| singleton set | 83.5% | **0.23%** |
+| widened set | 16.5% | **12.3%** — 5.5× the 2.21% base rate |
 
-When top-1 is wrong, the true class is still in the set **86.1%** of the time.
+When top-1 is wrong, the true class is still in the set **87.4%** of the time.
 That is what makes set size usable: a singleton is a diagnosis a crew can act on,
 and a shortlist is a genuine "go and look", which the Diagnostics page now says
 with this evidence attached.
@@ -125,18 +125,16 @@ approximate in a way the nominal 90% does not advertise.
    not that it is right, and on data unlike its calibration the two diverge.
    See `docs/BUGS.md` RP-28.
 
-1. **The RUL interval rests on one machine.** A conformal interval needs
-   *uncensored* targets — events with a failure ahead of them inside the
-   horizon. Only **11 of the 64** simulated machines ever reach one, and exactly
-   **one** of those falls outside the training split into the band available for
-   calibration. So the "90% interval" is one machine's residual quantile, not
-   the fleet's. It is a valid split-conformal interval at the event level and
-   the coverage measured on held-out data is real, but the marginal guarantee
-   assumes exchangeability, and a single calibration machine gives no protection
-   against that machine being unrepresentative. Treat the interval as indicative
-   width, not as a fleet-wide guarantee. Fixing it properly means simulating
-   longer lifetimes so more machines fail in-horizon — a dataset change, not a
-   model change. See `docs/BUGS.md` RP-26.
+1. **RUL is a wide interval, not a precise date.** The training fleet now
+   simulates each machine's whole 4,000-cycle service life (RP-26), so 39 of 64
+   machines reach a failure and the interval is calibrated on 4 machines
+   instead of 1. It now keeps its promise — **93.1% coverage** against a 90%
+   target, where the one-machine interval under-covered at 88.1%. The price is
+   width: **±1,241 throws**, 40% of the target range. The point estimate's
+   error relative to the spread of its targets is RMSE/σ = **0.79** (0.73 on the
+   old 800-cycle task — a five-times-shorter horizon). Use it to rank machines
+   by urgency, not to schedule a date. Four calibration machines is still few,
+   and exchangeability holds at the machine level, not the event level.
 2. **Trained on simulated data.** Headline numbers describe performance on a
    generator calibrated to 7 real traces — not on an operational fleet.
 3. **Two machine types.** `PMD-B`'s healthy baseline is extrapolated: both real

@@ -1,8 +1,8 @@
 event,expected,predicted,correct,diagnostic,why,set_size,in_set,anomaly_score
-PMD014#2593,NORMAL,NORMAL,True,False,"completed throw, textbook current profile",1,True,153.5
-PMD014#2594,E03_LINE_RELAY,E03_LINE_RELAY,True,True,"motor never started, no supply sag",1,True,4149.5
-PMD014#2595,NORMAL,NORMAL,True,False,"completed throw, textbook current profile",1,True,86.2
-PMD014#2596,NORMAL,NORMAL,True,False,"completed throw, textbook current profile",1,True,106.8
-PMD014#2597,NORMAL,NORMAL,True,False,"completed throw, textbook current profile",1,True,96.7
-PMD055#5416,E01_LOCK_LATCH,OBSTRUCTION,False,True,"stalled throw, never locks, drive never cut",1,False,6890.0
-PMD055#5417,E01_LOCK_LATCH,OBSTRUCTION,False,True,"stalled throw, never locks, drive never cut",1,False,7483.5
+PMD014#2593,NORMAL,NORMAL,True,False,"completed throw, textbook current profile",1,True,148.7
+PMD014#2594,E03_LINE_RELAY,E03_LINE_RELAY,True,True,"motor never started, no supply sag",1,True,2177.9
+PMD014#2595,NORMAL,NORMAL,True,False,"completed throw, textbook current profile",1,True,91.8
+PMD014#2596,NORMAL,NORMAL,True,False,"completed throw, textbook current profile",1,True,84.3
+PMD014#2597,NORMAL,NORMAL,True,False,"completed throw, textbook current profile",1,True,76.6
+PMD055#5416,E01_LOCK_LATCH,OBSTRUCTION,False,True,"stalled throw, never locks, drive never cut",1,False,8029.1
+PMD055#5417,E01_LOCK_LATCH,OBSTRUCTION,False,True,"stalled throw, never locks, drive never cut",1,False,8116.6
