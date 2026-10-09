@@ -7,6 +7,19 @@ Detects and classifies faults in railway point machines from motor-current and
 indication-line signals, forecasts remaining useful life, explains every
 prediction, and serves it through a live operations console.
 
+![The Diagnostics workspace following the live feed: each new throw's motor
+current, supply and indication lines, segmented into the unlock, throw and lock
+phases the model reasons over.](docs/screenshots/console.gif)
+
+| | |
+|---|---|
+| ![Territory: the interlocking plan, with the lit leg of each turnout showing the route its points are set for](docs/screenshots/territory.png) | ![Fleet: every machine ranked by health, with remaining life as a conformal interval](docs/screenshots/fleet.png) |
+| **Territory** — the interlocking plan; the lit leg of each turnout is the route its points are set for | **Fleet** — every machine ranked by health, remaining life as a 90% interval |
+| ![Diagnostics: one throw in full, with the evidence behind the verdict and a maintenance copilot](docs/screenshots/diagnostics.png) | ![Model: the real-data acceptance test, conformal calibration, and where the model is weakest](docs/screenshots/model.png) |
+| **Diagnostics** — one throw, the evidence behind the verdict, and a work-order copilot | **Model** — every figure read from the training run, leading with the one that does not flatter |
+| ![Alerts: repeat conditions collapsed into one row per machine, with acknowledge and resolve](docs/screenshots/alerts.png) | ![Inspector: one machine's health trend, remaining-life interval and open conditions](docs/screenshots/inspector.png) |
+| **Alerts** — repeat conditions collapse to one row with a count, so one bad machine cannot bury the rest | **Inspector** — a machine's health, remaining-life interval and open conditions, without leaving the page |
+
 > **Provenance.** This is the 2026 rebuild of *Failure Prediction of Railway Point
 > Machine* — team **Fault Force**, Woosong University (우송대학교), AI & Big Data,
 > Endicott College of International Studies, Sept–Dec 2024, an industry-linked
