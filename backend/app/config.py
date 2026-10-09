@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     artifacts_dir: Path = ROOT / "experiments" / "artifacts"
     synthetic_dir: Path = ROOT / "data" / "synthetic"
     raw_dir: Path = ROOT / "data" / "raw" / "sehwa"
+    #: The built dashboard. When present the API serves it, so one container on
+    #: one port is the whole product.
+    frontend_dist: Path = ROOT / "frontend" / "dist"
 
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 

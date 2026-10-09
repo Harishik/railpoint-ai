@@ -336,3 +336,31 @@ def test_copilot_404s_on_unknown_event(client):
     r = client.post("/api/copilot", json={"event_id": "does-not-exist"})
     assert r.status_code == 404
 
+
+def test_api_serves_the_dashboard_with_client_side_routes(client, tmp_path, monkeypatch):
+    """One container, one URL. A reload on a client-side route must get the app,
+    an unknown API path must stay an API 404, and `../` must not escape."""
+    from app.main import settings
+
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><title>console</title>")
+    (dist / "assets" / "app.js").write_text("console.log('ok')")
+    (tmp_path / "secret.txt").write_text("outside the build")
+    monkeypatch.setattr(settings, "frontend_dist", dist)
+
+    for route in ("/", "/fleet", "/events/E000084"):
+        r = client.get(route)
+        assert r.status_code == 200 and "<title>console</title>" in r.text, route
+    assert client.get("/assets/app.js").text == "console.log('ok')"
+    assert client.get("/api/does-not-exist").status_code == 404
+    assert client.get("/api/stats").status_code == 200, "the API must still win"
+    r = client.get("/..%2Fsecret.txt")
+    assert "outside the build" not in r.text
+
+
+def test_no_dashboard_build_means_404_not_a_crash(client, tmp_path, monkeypatch):
+    from app.main import settings
+
+    monkeypatch.setattr(settings, "frontend_dist", tmp_path / "missing")
+    assert client.get("/fleet").status_code == 404

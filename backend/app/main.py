@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from .config import settings
 from .schemas.models import CopilotRequest
@@ -257,3 +258,28 @@ async def ws_stream(ws: WebSocket) -> None:
         stream.unsubscribe(q)
         with contextlib.suppress(Exception):
             await ws.close()
+
+
+# Registered last so every /api and /ws route above takes precedence.
+@app.get("/{path:path}", include_in_schema=False)
+async def dashboard(path: str) -> FileResponse:
+    """Serve the built dashboard, so `docker compose up` is one URL.
+
+    The image always built `frontend/dist` and then served nothing from it; the
+    compose file's separate dev server proxied to 127.0.0.1 inside its own
+    container and reached no API at all. Any path that is not a real file falls
+    back to index.html, because the console routes client-side (/fleet,
+    /events/E000084) and a reload on one of those must not 404.
+    """
+    dist = settings.frontend_dist
+    index = dist / "index.html"
+    # An unknown /api path is an API error, never the dashboard's HTML.
+    if path.startswith(("api/", "ws/")) or not index.is_file():
+        raise HTTPException(status_code=404)
+    if path:
+        target = (dist / path).resolve()
+        # resolve() then a containment check: `../` in the path must not reach
+        # anything outside the build directory.
+        if target.is_file() and dist.resolve() in target.parents:
+            return FileResponse(target)
+    return FileResponse(index)

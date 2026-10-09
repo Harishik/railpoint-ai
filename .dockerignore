@@ -1,0 +1,23 @@
+# Keep the build context small and the image free of anything host-specific or
+# private. Without this file the context shipped .venv (gigabytes) and the
+# host's node_modules, whose native binaries broke the Linux frontend build.
+.git
+.venv*
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+frontend/node_modules
+frontend/dist
+data/synthetic
+data/processed
+data/external
+# The Sehwa extract is private. It must never enter an image that could be
+# pushed to a registry.
+data/raw
+legacy
+mlruns
+logs
+*.db
+archive-*

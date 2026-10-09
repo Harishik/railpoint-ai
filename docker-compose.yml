@@ -1,24 +1,31 @@
+# docker compose up  ->  open http://localhost:8000
+#
+# The API serves the built dashboard, so this is the whole product. Startup
+# takes ~30 s while torch and the model weights load; the healthcheck waits
+# for /api/health, which reports 503 until something can actually score.
 services:
   api:
     build: { context: ., dockerfile: Dockerfile }
     ports: ["8000:8000"]
-    environment:
-      RAILPOINT_CORS_ORIGINS: '["http://localhost:5173","http://localhost:8000"]'
-    volumes:
-      - ./experiments/artifacts:/app/experiments/artifacts:ro
-      - ./data/synthetic:/app/data/synthetic
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 10s
       timeout: 3s
-      retries: 6
+      retries: 9
+      start_period: 20s
 
+  # Frontend development with hot reload, against the containerised API:
+  #   docker compose --profile dev up   ->  http://localhost:5173
   web:
+    profiles: ["dev"]
     image: node:22-slim
     working_dir: /app/frontend
     command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
     ports: ["5173:5173"]
-    volumes: ["./frontend:/app/frontend"]
+    volumes:
+      - ./frontend:/app/frontend
+      # The container's own Linux node_modules, never the host's.
+      - /app/frontend/node_modules
     environment:
       VITE_API_TARGET: http://api:8000
     depends_on:
