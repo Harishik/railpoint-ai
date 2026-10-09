@@ -156,6 +156,82 @@ def test_net_calibration_is_not_applied_to_the_fallback_probe(tmp_path, monkeypa
     assert svc._maha_mean is None and svc._maha_prec is None
 
 
+
+def test_serving_and_pipeline_share_one_set_implementation():
+    """These were two implementations once, and they disagreed: serving forced
+    the argmax in and the pipeline did not, so the reported mean set size
+    (0.895) described sets the console never served. One function, by identity."""
+    from app.services import inference as inf
+    from pmdlib.eval.conformal import prediction_set
+
+    assert inf.conformal_set is prediction_set
+
+
+def _artefacts_with_real_net(tmp_path):
+    """Calibration is only read when the encoder loads, so these tests need the
+    real weights beside a hand-written calibration file."""
+    import shutil
+
+    from app.services import inference as inf
+
+    real = inf.settings.artifacts_dir / "net.pt"
+    if not real.exists():
+        pytest.skip("no trained net.pt to load")
+    shutil.copy(real, tmp_path / "net.pt")
+
+
+def test_pre_raps_artefact_is_read_as_threshold(tmp_path, monkeypatch):
+    """An artefact written before the rule was recorded carries a `thr`
+    quantile. Read as a RAPS cumulative-mass threshold it would serve top-1 for
+    every event, silently - so absence of the key must mean `thr`."""
+    import numpy as np
+
+    from app.services import inference as inf
+
+    _artefacts_with_real_net(tmp_path)
+    np.savez(tmp_path / "calibration.npz", conformal_qhat=0.0085, rul_qhat=240.0,
+             maha_mean=np.zeros(4), maha_precision=np.eye(4))
+    monkeypatch.setattr(inf.settings, "artifacts_dir", tmp_path)
+    svc = inf.InferenceService()
+    assert svc._conformal_rule == "thr"
+    assert svc.calibration_error is None
+
+
+def test_malformed_raps_artefact_degrades_instead_of_crashing(tmp_path, monkeypatch):
+    """RAPS cannot be rebuilt from the quantile alone. A file naming the rule
+    without its penalty must not stop the API - that would take the fleet view
+    and alert queue down over one file - and must not be served as if valid."""
+    import numpy as np
+
+    from app.services import inference as inf
+
+    _artefacts_with_real_net(tmp_path)
+    np.savez(tmp_path / "calibration.npz", conformal_qhat=0.9999, conformal_rule="raps",
+             rul_qhat=240.0, maha_mean=np.zeros(4), maha_precision=np.eye(4))
+    monkeypatch.setattr(inf.settings, "artifacts_dir", tmp_path)
+    svc = inf.InferenceService()  # must not raise
+
+    assert svc._net is not None
+    assert svc.calibration_error and "raps" in svc.calibration_error
+    # Singleton sets: they claim no shortlist the calibration did not certify.
+    assert (svc._conformal_rule, svc._conformal_qhat) == ("thr", 0.0)
+
+
+def test_health_reports_a_calibration_problem(client, monkeypatch):
+    """Scoring still works, so `scoring` stays true - but the sets cannot be
+    trusted, and a health check that says "ok" over that is the failure RP-15
+    exists to prevent."""
+    from app.main import inference
+
+    monkeypatch.setattr(inference, "calibration_error", "calibration is malformed")
+    r = client.get("/api/health")
+    assert r.status_code == 503
+    body = r.json()
+    assert body["status"] == "degraded"
+    assert body["scoring"] is True
+    assert body["calibration"] == "calibration is malformed"
+
+
 def test_repeated_faults_collapse_into_one_alert(client):
     """A machine past the symptom threshold raises the same condition on every
     throw. Appending one alert per throw floods the bounded deque and evicts

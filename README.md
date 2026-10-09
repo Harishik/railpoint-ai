@@ -95,12 +95,15 @@ capture ─► phase segmentation ─► 113 features ────────�
 
 - **Input representation** carries shape *and* scale separately, because absolute
   amplitude does not transfer between machine classes but does carry signal.
-- **Conformal prediction** is calibrated on a dedicated `calib` split — never the
-  one early stopping selects on — and measured on held-out test machines at
-  **0.978** against a 0.90 target. Read that number with its caveat: the sets
-  come out at exactly one label each, so coverage equals top-1 accuracy and the
-  conformal layer is not currently earning its keep. An adaptive score function
-  is the fix. See `docs/BUGS.md` RP-27.
+- **Conformal prediction sets you can act on — in distribution.** RAPS,
+  calibrated on a dedicated `calib` split that early stopping never sees. On
+  held-out *simulated* machines 88.4% of throws get a single label, wrong 0.20% of
+  the time; the 11.6% that get a shortlist are wrong 17.5% of the time — 7.9× the
+  base rate. The plain threshold this replaced met its coverage target with every
+  set exactly the argmax, so it never once flagged its own mistakes (RP-27).
+  **It does not hold on shifted real data:** both real PMD055 errors are confident
+  one-label sets, and nothing in the system yet flags a confident wrong fault
+  type (RP-28). See `experiments/results/conformal-rules.md`.
 - **Anomaly detection is post-hoc**, so it cannot trade classification accuracy
   for its own score, and catches faults outside the taxonomy.
 

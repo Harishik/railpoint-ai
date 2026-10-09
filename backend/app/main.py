@@ -61,13 +61,18 @@ async def health(response: Response) -> dict:
     # A console that reports "ok" while nothing is scoring is worse than one
     # with no health check at all, so this is a 503 the moment no model loads.
     degraded = inference.degraded
-    if degraded:
+    # Scoring can work while the prediction sets cannot be trusted — a malformed
+    # calibration artefact. That is not "ok" either, so it is a 503 with the
+    # reason, while `scoring` stays true because classification still runs.
+    calibration_error = inference.calibration_error
+    if degraded or calibration_error:
         response.status_code = 503
     return {
-        "status": "degraded" if degraded else "ok",
+        "status": "degraded" if (degraded or calibration_error) else "ok",
         "model_source": inference.source,
         "model_version": inference.version,
         "scoring": not degraded,
+        "calibration": calibration_error or "ok",
     }
 
 
@@ -200,7 +205,8 @@ async def model_card() -> dict:
 
     return {
         "serving": {"source": inference.source, "version": inference.version,
-                    "degraded": inference.degraded},
+                    "degraded": inference.degraded or bool(inference.calibration_error),
+                    "calibration_error": inference.calibration_error},
         "summary": summary,
         "metropt": read_json("metropt-summary.json"),
         "acceptance": acceptance,

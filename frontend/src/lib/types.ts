@@ -97,7 +97,7 @@ export type CopilotReply = {
 }
 
 export interface ModelCard {
-  serving: { source: string; version: string; degraded: boolean }
+  serving: { source: string; version: string; degraded: boolean; calibration_error?: string | null }
   summary: {
     params: number
     /** Fixed input grid the encoder sees, in samples. */
@@ -106,17 +106,36 @@ export interface ModelCard {
     test: { model: string; accuracy: number; balanced_acc: number; macro_f1: number; weighted_f1: number }
     conformal: {
       alpha: number; qhat: number; coverage: number; mean_set_size: number
-      /** How many held-out events the bare threshold rule would leave with no
-       *  label at all. Measured against the raw rule, not the served set, which
-       *  always contains the argmax. */
+      /** Score function the quantile belongs to: 'raps' | 'aps' | 'thr'. */
+      rule?: string
+      lam?: number
+      k_reg?: number
+      /** Only written by artefacts calibrated under the plain threshold rule. */
       threshold_empty_sets?: number
+      /* Whether set size means anything. Marginal coverage cannot tell: the
+         threshold rule hit 0.978 with every set exactly the argmax. */
+      singleton_rate?: number
+      max_set_size?: number
+      /** When top-1 is wrong, how often the truth is still in the set. */
+      coverage_when_wrong?: number | null
+      error_rate?: number
+      error_rate_singleton?: number | null
+      error_rate_widened?: number | null
+      widened_lift?: number
       calib_events?: number
       calib_machines?: number
       /** Which split the quantile was fitted on. Never the one early stopping used. */
       calib_split?: string
     }
     rul: { n: number; rmse: number; mae: number; interval_halfwidth: number; coverage: number }
-    anomaly: { roc_auc: number; positive_rate: number }
+    anomaly: {
+      roc_auc: number; positive_rate: number
+      /** Where healthy held-out (calib) throws sit on the anomaly scale. */
+      healthy_calib_n?: number
+      healthy_calib_p99?: number
+      healthy_calib_p999?: number
+      healthy_calib_max?: number
+    }
     acceptance: {
       diagnostic_correct: number; diagnostic_total: number
       all_correct: number; passed: boolean; expected_in_conformal_set: number

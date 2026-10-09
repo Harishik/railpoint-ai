@@ -21,6 +21,7 @@ if str(ML_ROOT) not in sys.path:
     sys.path.insert(0, str(ML_ROOT))
 
 from pmdlib.data.loader import CLASS_ORDER  # noqa: E402
+from pmdlib.eval.conformal import prediction_set as conformal_set  # noqa: E402
 from pmdlib.features import FEATURE_NAMES, extract  # noqa: E402
 from pmdlib.features.segment import segment  # noqa: E402
 from pmdlib.sim.spec import FAULT_META, FAULT_TO_ERR_CODE, FaultClass  # noqa: E402
@@ -65,6 +66,12 @@ class InferenceService:
         self.version = "fallback-0"
         self._net = None
         self._conformal_qhat = 0.6
+        self._conformal_rule = "thr"
+        self._conformal_lam = 0.0
+        #: Set when the calibration artefact exists but cannot be used as
+        #: written. Surfaced by /api/health; never silently swallowed.
+        self.calibration_error: str | None = None
+        self._conformal_kreg = 1
         self._rul_qhat = float("nan")
         self._maha_mean = None
         self._maha_prec = None
@@ -115,6 +122,32 @@ class InferenceService:
         if calib_path.exists() and self._net is not None:
             c = np.load(calib_path)
             self._conformal_qhat = float(c["conformal_qhat"])
+            # A quantile means nothing without the score it came from. An
+            # artefact written before APS existed carries no rule, and reading
+            # its `thr` quantile as a cumulative-mass threshold would silently
+            # serve top-1 for every event — so absence means `thr`, explicitly.
+            self._conformal_rule = (
+                str(c["conformal_rule"]) if "conformal_rule" in c else "thr"
+            )
+            self._conformal_lam = float(c["conformal_lam"]) if "conformal_lam" in c else 0.0
+            self._conformal_kreg = int(c["conformal_kreg"]) if "conformal_kreg" in c else 1
+            # RAPS is not reproducible from the quantile alone. An artefact that
+            # names it without its penalty is malformed, and guessing a penalty
+            # would serve sets the calibration never certified.
+            #
+            # Not raised: this runs at import, so an exception would stop the
+            # API and take the fleet view and the alert queue down with it, over
+            # one file. Instead serve singleton sets — they claim no shortlist
+            # the calibration did not certify — and report it through
+            # /api/health, the same way a missing model is reported (RP-15).
+            if self._conformal_rule == "raps" and not {"conformal_lam", "conformal_kreg"} <= set(c.files):
+                self.calibration_error = (
+                    "calibration.npz declares rule 'raps' without its penalty "
+                    "parameters; serving singleton sets until `railpoint recalibrate` "
+                    "is re-run"
+                )
+                print(f"[inference] {self.calibration_error}")
+                self._conformal_rule, self._conformal_qhat = "thr", 0.0
             self._rul_qhat = float(c["rul_qhat"])
             self._maha_mean, self._maha_prec = c["maha_mean"], c["maha_precision"]
             if "normal_mean" in c and c["normal_mean"].size:
@@ -168,8 +201,17 @@ class InferenceService:
             probs, rul, embedding = self._score_probe(vec)
 
         idx = int(np.argmax(probs))
-        pred_set = [CLASS_ORDER[i] for i in np.flatnonzero(probs >= 1.0 - self._conformal_qhat)]
-        if not pred_set:
+        # Shared with the training pipeline on purpose. These were two separate
+        # implementations once and they disagreed, so the reported mean set size
+        # described something serving never did. (Imported as `conformal_set`
+        # because `Scored` already has a field named `prediction_set`, and from
+        # the module rather than the package to keep sklearn off this path.)
+        chosen = conformal_set(
+            probs, self._conformal_qhat, self._conformal_rule,
+            self._conformal_lam, self._conformal_kreg,
+        )
+        pred_set = [CLASS_ORDER[i] for i in np.flatnonzero(chosen)]
+        if not pred_set:  # unreachable: every rule keeps the argmax
             pred_set = [CLASS_ORDER[idx]]
 
         anomaly = 0.0

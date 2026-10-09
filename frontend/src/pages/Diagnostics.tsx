@@ -22,7 +22,8 @@ import { SEVERITY_COLOR, ago, faultLabel } from '../lib/format'
  */
 export function Diagnostics() {
   const { eventId } = useParams()
-  const { events } = useConsole()
+  const { events, model } = useConsole()
+  const sets = model?.summary?.conformal
   const navigate = useNavigate()
   const [detail, setDetail] = useState<EventDetail | null>(null)
   const [hovered, setHovered] = useState<string | null>(null)
@@ -132,15 +133,26 @@ export function Diagnostics() {
         <Panel title="Evidence" flush aside={<Note>CONTRIBUTION TO VERDICT</Note>}>
           {detail ? (
             <>
-              {/* A set can no longer come back empty — both the serving path and
-                  the conformal wrapper force the argmax in — so the only case
-                  left to explain is a genuine shortlist. */}
+              {/* A set cannot come back empty under any rule, so the only case
+                  left to explain is a genuine shortlist. Under the old threshold
+                  rule this never rendered — every set was one label. */}
               {pred && pred.set_size > 1 && (
                 <div className="border-b px-[18px] py-3 text-[12px] leading-[1.55]"
-                  style={{ borderColor: 'var(--color-hair)', color: 'var(--color-dim)' }}>
+                  style={{ borderColor: 'var(--color-hair)', borderLeft: '2px solid var(--color-amber)', color: 'var(--color-dim)' }}>
                   The model cannot separate{' '}
                   <span style={{ color: 'var(--color-ink-2)' }}>{pred.prediction_set.map(faultLabel).join(', ')}</span>{' '}
                   at 90% coverage. Treat this as a shortlist, not a diagnosis.
+                  {/* The reason to take a shortlist seriously, measured rather
+                      than asserted. Omitted when the artefact predates it. */}
+                  {sets?.widened_lift != null && sets.error_rate_widened != null && (
+                    <>
+                      {' '}On held-out simulated machines, throws with a shortlist were wrong{' '}
+                      <span className="mono" style={{ color: 'var(--color-amber)' }}>
+                        {(sets.error_rate_widened * 100).toFixed(1)}%
+                      </span>{' '}
+                      of the time — {sets.widened_lift.toFixed(1)}× the average.
+                    </>
+                  )}
                 </div>
               )}
               <Evidence attributions={detail.attributions} onHover={setHovered} />

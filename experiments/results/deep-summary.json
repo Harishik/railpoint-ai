@@ -10,10 +10,19 @@
   },
   "conformal": {
     "alpha": 0.1,
-    "qhat": 0.0085,
-    "coverage": 0.9779,
-    "mean_set_size": 1.0,
-    "threshold_empty_sets": 1476,
+    "rule": "raps",
+    "qhat": 0.9999,
+    "coverage": 0.9969,
+    "mean_set_size": 1.125,
+    "lam": 0.01,
+    "k_reg": 1,
+    "singleton_rate": 0.8839,
+    "max_set_size": 6,
+    "coverage_when_wrong": 0.8611,
+    "error_rate": 0.0221,
+    "error_rate_singleton": 0.002,
+    "error_rate_widened": 0.1748,
+    "widened_lift": 7.91,
     "calib_events": 4711,
     "calib_machines": 5,
     "calib_split": "calib"
@@ -28,7 +37,11 @@
   },
   "anomaly": {
     "roc_auc": 0.9936,
-    "positive_rate": 0.25
+    "positive_rate": 0.25,
+    "healthy_calib_n": 3691,
+    "healthy_calib_p99": 138.0,
+    "healthy_calib_p999": 863.3,
+    "healthy_calib_max": 3995.3
   },
   "acceptance": {
     "diagnostic_correct": 1,

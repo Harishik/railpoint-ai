@@ -1,6 +1,7 @@
 import { Callout, Empty, Note, Page, Panel } from '../shell/Page'
 import { useConsole } from '../state/console'
 import { faultLabel } from '../lib/format'
+import type { ModelCard } from '../lib/types'
 
 /**
  * Model — what is serving, how well it does, and where it does not.
@@ -27,6 +28,7 @@ export function Model() {
   const weakest = [...card.per_class].sort((a, b) => Number(a.f1) - Number(b.f1)).slice(0, 5)
   const metro = card.metropt
   const degraded = card.serving.degraded
+  const healthyMax = s?.anomaly.healthy_calib_max ?? null
 
   return (
     <Page
@@ -47,6 +49,12 @@ export function Model() {
         </div>
       }
     >
+      {card.serving.calibration_error && (
+        <Callout tone="defect">
+          <strong className="font-semibold" style={{ color: 'var(--color-accent)' }}>Calibration unusable.</strong>{' '}
+          {card.serving.calibration_error}. Prediction sets below are singletons until it is fixed.
+        </Callout>
+      )}
       {acc && (
         <Panel title="Real-data acceptance test" flush aside={<Note tone="accent">THE NUMBER THAT MATTERS</Note>}>
           <div className="grid border-b sm:grid-cols-3" style={{ borderColor: 'var(--color-edge)' }}>
@@ -77,24 +85,36 @@ export function Model() {
           {card.acceptance.length > 0 && (
             <div className="overflow-x-auto">
               <div className="min-w-[720px]">
-                <div className="grid grid-cols-[150px_1fr_1fr_86px_66px] items-center gap-3.5 border-b px-[18px]"
+                <div className="grid grid-cols-[150px_1fr_1fr_70px_96px_66px] items-center gap-3.5 border-b px-[18px]"
                   style={{ height: 36, borderColor: 'var(--color-hair)', background: 'var(--color-deep)' }}>
                   <span className="cap">Event</span>
                   <span className="cap">Expected</span>
                   <span className="cap">Predicted</span>
                   <span className="cap text-right">Set size</span>
+                  <span className="cap text-right">Anomaly</span>
                   <span className="cap text-right">Correct</span>
                 </div>
                 {card.acceptance.map((r) => {
                   const ok = String(r.correct).toLowerCase() === 'true'
                   const c = ok ? 'var(--color-green)' : 'var(--color-accent)'
                   return (
-                    <div key={r.event} className="grid grid-cols-[150px_1fr_1fr_86px_66px] items-center gap-3.5 border-b px-[18px]"
+                    <div key={r.event} className="grid grid-cols-[150px_1fr_1fr_70px_96px_66px] items-center gap-3.5 border-b px-[18px]"
                       style={{ height: 42, borderColor: 'var(--color-hair)' }}>
                       <span className="mono text-[12px] font-medium leading-none" style={{ color: 'var(--color-ink-4)' }}>{r.event}</span>
                       <span className="text-[12px] leading-none" style={{ color: 'var(--color-dim)' }}>{faultLabel(r.expected)}</span>
                       <span className="text-[12px] font-medium leading-none" style={{ color: c }}>{faultLabel(r.predicted)}</span>
                       <span className="mono text-right text-[12px] leading-none" style={{ color: 'var(--color-dim)' }}>{r.set_size}</span>
+                      {(() => {
+                        const a = Number(r.anomaly_score)
+                        const unusual = healthyMax != null && Number.isFinite(a) && a > healthyMax
+                        return (
+                          <span className="mono text-right text-[12px] leading-none"
+                            style={{ color: unusual ? 'var(--color-amber)' : 'var(--color-dim)' }}
+                            title={unusual ? 'Above every healthy calibration throw' : undefined}>
+                            {Number.isFinite(a) ? a.toFixed(0) : '—'}
+                          </span>
+                        )
+                      })()}
                       <span className="mono text-right text-[11px] leading-none" style={{ letterSpacing: '0.08em', color: c }}>
                         {ok ? 'yes' : 'no'}
                       </span>
@@ -104,6 +124,35 @@ export function Model() {
               </div>
             </div>
           )}
+          {healthyMax != null && card.acceptance.length > 0 && (() => {
+            // Derived from the rows, so it stays true if the results move.
+            const isTrue = (v: string) => String(v).toLowerCase() === 'true'
+            const faults = card.acceptance.filter((r) => r.expected !== 'NORMAL')
+            const healthy = card.acceptance.filter((r) => r.expected === 'NORMAL')
+            const faultsAbove = faults.filter((r) => Number(r.anomaly_score) > healthyMax).length
+            const healthyBelow = healthy.filter((r) => Number(r.anomaly_score) <= healthyMax).length
+            const confidentWrong = card.acceptance.filter((r) => !isTrue(r.correct) && Number(r.set_size) === 1)
+            const separates = faultsAbove === faults.length && healthyBelow === healthy.length
+            return (
+              <p className="border-t px-[18px] py-3 text-[12px] leading-[1.6]"
+                style={{ borderColor: 'var(--color-edge)', color: 'var(--color-dim)', textWrap: 'pretty' }}>
+                <span style={{ color: 'var(--color-amber)' }}>Amber</span>: above every one of{' '}
+                {s?.anomaly.healthy_calib_n?.toLocaleString()} healthy calibration throws.{' '}
+                {separates
+                  ? <>The anomaly score separates all {faults.length} captures whose fault shows in the signal from
+                      all {healthy.length} that look healthy — it detects <em className="not-italic" style={{ color: 'var(--color-ink-2)' }}>that</em> a
+                      machine is faulty.</>
+                  : <>{faultsAbove} of {faults.length} faulty captures score above it, and {healthyBelow} of{' '}
+                      {healthy.length} healthy-looking ones below.</>}
+                {confidentWrong.length > 0 && (
+                  <>{' '}It cannot say <em className="not-italic" style={{ color: 'var(--color-ink-2)' }}>which</em> fault:{' '}
+                    {confidentWrong.length} real {confidentWrong.length === 1 ? 'error is a' : 'errors are'} confident
+                    one-label {confidentWrong.length === 1 ? 'set' : 'sets'} naming the wrong fault, scoring no differently
+                    from a correct fault diagnosis. Nothing in the console yet flags a confident wrong fault type.</>
+                )}
+              </p>
+            )
+          })()}
         </Panel>
       )}
 
@@ -121,7 +170,8 @@ export function Model() {
       )}
 
       {s && (
-        <Panel title="Conformal calibration" flush aside={<Note>등각 예측</Note>}>
+        <Panel title="Conformal calibration" flush
+          aside={<Note>{s.conformal.rule ? `${s.conformal.rule.toUpperCase()}${s.conformal.rule === 'raps' ? ` · λ=${s.conformal.lam}` : ''} · ` : ''}등각 예측</Note>}>
           <div className="grid lg:grid-cols-[1.1fr_1fr]">
             <div className="grid grid-cols-2 border-r" style={{ borderColor: 'var(--color-edge)' }}>
               {[
@@ -182,6 +232,9 @@ export function Model() {
               </span>
             </div>
           </div>
+          {s.conformal.error_rate_widened != null && s.conformal.error_rate != null && (
+            <SetMeaning c={s.conformal} />
+          )}
           {s.conformal.mean_set_size <= 1.0001 && (
             <Callout tone="defect">
               <strong className="font-semibold" style={{ color: 'var(--color-accent)' }}>Not earning its keep.</strong>{' '}
@@ -283,6 +336,38 @@ function Metric({ k, ko, v, sub, bar, warn }: { k: string; ko: string; v: string
           style={{ width: `${(Math.min(1, Math.max(0, bar)) * 100).toFixed(1)}%`, background: warn ? 'var(--color-amber)' : 'var(--color-green)' }} />
       </span>
       <span className="text-[11px] leading-[1.4]" style={{ color: 'var(--color-dim)' }}>{sub}</span>
+    </div>
+  )
+}
+
+/**
+ * What set size means, measured.
+ *
+ * Marginal coverage is the number that hid RP-27: the old threshold rule met
+ * its target with every set exactly the argmax, so a "90% set" covered nothing
+ * the argmax did not. These are the numbers that say whether a shortlist on the
+ * Diagnostics page is worth acting on.
+ */
+function SetMeaning({ c }: { c: NonNullable<ModelCard['summary']>['conformal'] }) {
+  const pct = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${(v * 100).toFixed(d)}%`)
+  const cells = [
+    { k: 'SINGLETON', v: pct(c.singleton_rate), sub: `wrong ${pct(c.error_rate_singleton, 2)} of the time`, col: 'var(--color-green)' },
+    { k: 'WIDENED', v: pct(c.singleton_rate == null ? null : 1 - c.singleton_rate), sub: `wrong ${pct(c.error_rate_widened, 2)} of the time`, col: 'var(--color-amber)' },
+    { k: 'WIDENED VS BASE', v: c.widened_lift == null ? '—' : `${c.widened_lift.toFixed(1)}×`, sub: `base error ${pct(c.error_rate, 2)}`, col: 'var(--color-ink-2)' },
+    { k: 'TRUTH IN SET, TOP-1 WRONG', v: pct(c.coverage_when_wrong), sub: 'was 0.0% under the threshold rule', col: 'var(--color-ink-2)' },
+  ]
+  return (
+    <div className="border-t" style={{ borderColor: 'var(--color-edge)' }}>
+      <div className="px-[18px] pb-1 pt-3"><span className="cap">What the set size means · held-out simulated machines</span></div>
+      <div className="grid grid-cols-2 xl:grid-cols-4">
+        {cells.map((x) => (
+          <div key={x.k} className="flex flex-col gap-[7px] border-r px-[18px] py-3.5" style={{ borderColor: 'var(--color-edge)' }}>
+            <span className="cap">{x.k}</span>
+            <span className="mono text-[20px] font-semibold leading-none" style={{ color: x.col }}>{x.v}</span>
+            <span className="text-[11px] leading-[1.4]" style={{ color: 'var(--color-label)' }}>{x.sub}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

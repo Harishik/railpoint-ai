@@ -86,6 +86,26 @@ def train_cmd(
     run(TrainConfig(epochs=epochs, batch_size=batch_size, lr=lr), threads=threads or None)
 
 
+from pmdlib.eval.conformal import DEFAULT_RULE  # noqa: E402
+
+
+@app.command("recalibrate")
+def recalibrate_cmd(
+    rule: str = DEFAULT_RULE,
+    threads: int = 8,
+) -> None:
+    """Re-run calibration, evaluation and export against the existing weights.
+
+    Nothing about the network changes, so nothing is retrained: the trained
+    `net.pt` is loaded, and every artefact downstream of it is recomputed. Use it
+    when only the conformal score function or the calibration split changes.
+    Threads default to 8 — at 15 this machine throttled to 20% clock speed.
+    """
+    from pmdlib.train.pipeline import run
+
+    run(threads=threads, reuse_net=True, rule=rule)
+
+
 # Must stay at the very bottom. When this sits above a command
 # definition, `python -m pmdlib.cli` runs app() before that command is
 # registered, so the command silently does not exist - which is exactly how
