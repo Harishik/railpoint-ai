@@ -20,7 +20,14 @@
 
 ### Per-event characterisation
 
-_Table withheld: it reproduced the private Sehwa extract, which is not published._
+The extract holds five events from PMD014 (maintenance code E03) and two from
+PMD055 (E01). A per-event table of their measurements is deliberately **not**
+reproduced here: the extract is company-provided, Sehwa has not agreed to its
+publication, and a table of every capture's measured values is the extract in
+another form. What each event shows is described qualitatively below. The
+measured quantities feed the simulator only as fitted parameters — the template
+shape and the constants in `ml/pmdlib/sim/spec.py` — which is the line drawn
+between publishing the model and publishing the data.
 
 ### What the waveforms actually show
 
@@ -96,13 +103,13 @@ cannot verify. Worth confirming with Sehwa.
 
 ---
 
-## 2. Maintenance codes — `data/raw/sehwa/error_codes.csv`
+## 2. Maintenance codes
 
-The shipped `maintenance_code.csv` is EUC-KR encoded and rendered as mojibake in
-the 2024 app (APP-11). Decoded, it turns out the codes name **components, not
-failure modes** — Sehwa's own maintenance vocabulary:
-
-_Table withheld: it reproduced the private Sehwa extract, which is not published._
+The extract ships with Sehwa's maintenance-code table, EUC-KR encoded, which the
+2024 app rendered as mojibake (APP-11). Decoded, it turns out the seven codes,
+E01–E07, name **components, not failure modes** — Sehwa's own maintenance
+vocabulary, spanning the lock, detection, control, motor, power and indication
+subsystems. The table itself is Sehwa's document and is not published here.
 
 This matters for design: the model's output classes are aligned to these seven
 real codes rather than to a taxonomy we invent, so a prediction lands directly in

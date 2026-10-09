@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from ..data import CLASS_ORDER, load, load_real
+from ..data import CLASS_ORDER, load, load_real, real_extract_available
 from ..eval import (
     DEFAULT_RULE,
     ConformalClassifier,
@@ -182,8 +182,14 @@ def run(
         lengths = np.concatenate([s.lengths, f.lengths])
         meta = pd.concat([s.meta, f.meta], ignore_index=True)
         parts[split] = (infer(model, signals, lengths), meta)
-    real = load_real()
-    real_out = infer(model, real.signals, real.lengths)
+    # The real-data acceptance test needs the private Sehwa extract. A public
+    # clone does not have it, and must still be able to train end to end.
+    have_real = real_extract_available()
+    if have_real:
+        real = load_real()
+        real_out = infer(model, real.signals, real.lengths)
+    else:
+        print("      private Sehwa extract not present: the real-data acceptance test is skipped")
 
     # Calibration runs on `calib`, a split the model was neither trained on nor
     # selected on. It used to run on `val` — the split early stopping uses to
@@ -317,20 +323,30 @@ def run(
         "healthy_calib_max": round(float(healthy_cal.max()), 1),
     }
 
-    accept, passed = acceptance_test(real.meta.key.tolist(), real_out["pred"])
-    sets = cc.predict_set(real_out["probs"])
-    accept["set_size"] = sets.sum(axis=1)
-    accept["in_set"] = [
-        bool(sets[i, CLASS_ORDER.index(accept.expected.iloc[i])]) for i in range(len(accept))
-    ]
-    accept["anomaly_score"] = np.round(scorer.score(real_out["embedding"]), 1)
-    summary["acceptance"] = {
-        "diagnostic_correct": int(accept[accept.diagnostic].correct.sum()),
-        "diagnostic_total": int(accept.diagnostic.sum()),
-        "all_correct": int(accept.correct.sum()),
-        "passed": bool(passed),
-        "expected_in_conformal_set": int(accept.in_set.sum()),
-    }
+    if have_real:
+        accept, passed = acceptance_test(real.meta.key.tolist(), real_out["pred"])
+        sets = cc.predict_set(real_out["probs"])
+        accept["set_size"] = sets.sum(axis=1)
+        accept["in_set"] = [
+            bool(sets[i, CLASS_ORDER.index(accept.expected.iloc[i])]) for i in range(len(accept))
+        ]
+        accept["anomaly_score"] = np.round(scorer.score(real_out["embedding"]), 1)
+        summary["acceptance"] = {
+            "diagnostic_correct": int(accept[accept.diagnostic].correct.sum()),
+            "diagnostic_total": int(accept.diagnostic.sum()),
+            "all_correct": int(accept.correct.sum()),
+            "passed": bool(passed),
+            "expected_in_conformal_set": int(accept.in_set.sum()),
+        }
+    else:
+        # Written empty rather than left alone: an acceptance file from some
+        # earlier model, beside this model's summary, would describe a network
+        # that no longer exists.
+        accept = pd.DataFrame(columns=[
+            "event", "expected", "predicted", "correct", "diagnostic", "why",
+            "set_size", "in_set", "anomaly_score",
+        ])
+        summary["acceptance"] = None
 
     print("[6/6] saving artefacts")
     # A reused run leaves the weights alone. Re-saving them would write
@@ -374,6 +390,8 @@ def run(
 
     print("\n=== summary ===")
     print(json.dumps(summary, indent=2))
-    print("\n=== real acceptance test ===")
-    print(accept[["event", "expected", "predicted", "correct", "diagnostic", "set_size", "in_set"]].to_string(index=False))
+    if have_real:
+        print("\n=== real acceptance test ===")
+        cols = ["event", "expected", "predicted", "correct", "diagnostic", "set_size", "in_set"]
+        print(accept[cols].to_string(index=False))
     return summary

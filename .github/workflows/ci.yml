@@ -23,9 +23,15 @@ jobs:
 
       # The calibration gate is the credibility check for the whole project:
       # everything downstream trains on generated data, so the generator must be
-      # shown to still match the real Sehwa traces. A drift here fails the build.
+      # shown to still match the real Sehwa traces. Those traces are private and
+      # are not in this repository, so on a public runner the gate cannot run.
+      # It says so, rather than reporting a pass it never earned.
       - name: Simulator calibration gate
-        run: .venv/bin/python -m pytest tests/test_calibration.py -q
+        run: |
+          if [ ! -f data/raw/sehwa/pmd_events.csv ]; then
+            echo "::notice title=Calibration gate skipped::The private Sehwa extract is not present on this runner, so the simulator was not checked against the real traces. Run 'pytest tests/test_calibration.py' where the extract is available."
+          fi
+          .venv/bin/python -m pytest tests/test_calibration.py -q -rs
 
       - name: Tests
         run: .venv/bin/python -m pytest tests/ -q --maxfail=1

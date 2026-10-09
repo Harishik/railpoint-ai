@@ -136,10 +136,11 @@ export interface ModelCard {
       healthy_calib_p999?: number
       healthy_calib_max?: number
     }
+    /** Null when the run had no access to the private Sehwa extract. */
     acceptance: {
       diagnostic_correct: number; diagnostic_total: number
       all_correct: number; passed: boolean; expected_in_conformal_set: number
-    }
+    } | null
   } | null
   metropt: Record<string, string | number> | null
   acceptance: Record<string, string>[]

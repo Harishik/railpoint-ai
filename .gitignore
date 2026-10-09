@@ -8,6 +8,10 @@ __pycache__/
 .ruff_cache/
 
 # Data — large / external / generated
+# The Sehwa extract is company-provided and may not be published. Only its
+# checksums are committed, so anyone with access can verify their copy.
+data/raw/sehwa/*
+!data/raw/sehwa/SHA256SUMS
 data/external/
 data/synthetic/
 data/processed/
@@ -19,6 +23,9 @@ experiments/results/*.png
 *.onnx
 *.pt
 *.ckpt
+# The trained network ships, so a clone serves the real model instead of the
+# fallback probe — which would itself need hours of data generation first.
+!experiments/artifacts/net.pt
 
 # Node
 node_modules/

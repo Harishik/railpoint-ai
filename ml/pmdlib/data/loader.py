@@ -15,6 +15,10 @@ from ..utils.splits import machine_split
 
 ROOT = Path(__file__).resolve().parents[3]
 SYNTH_DIR = ROOT / "data" / "synthetic"
+#: The 7-event Sehwa extract. Company-provided and **not public**: it is
+#: gitignored, only its checksums are committed, and every consumer must cope
+#: with its absence, because a public clone will not have it.
+REAL_EXTRACT = ROOT / "data" / "raw" / "sehwa" / "pmd_events.csv"
 CACHE_DIR = ROOT / "data" / "processed"
 
 #: Fixed label order, so a model trained today lines up with one trained later.
@@ -117,6 +121,10 @@ def load(
     return ds
 
 
+def real_extract_available() -> bool:
+    return REAL_EXTRACT.exists()
+
+
 def load_real(raw_csv: Path | None = None) -> Dataset:
     """The 7 real Sehwa events, shaped like the synthetic data.
 
@@ -126,7 +134,12 @@ def load_real(raw_csv: Path | None = None) -> Dataset:
     """
     from ..sim.spec import CHANNELS
 
-    raw_csv = raw_csv or ROOT / "data" / "raw" / "sehwa" / "pmd_events.csv"
+    raw_csv = raw_csv or REAL_EXTRACT
+    if not raw_csv.exists():
+        raise FileNotFoundError(
+            f"{raw_csv} not found. The Sehwa extract is private and is not part of the "
+            "public repository; the real-data acceptance test needs it."
+        )
     df = pd.read_csv(raw_csv)
     df["key"] = df.pmd_type + "#" + df.event_num.astype(str)
 
