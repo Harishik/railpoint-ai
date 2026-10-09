@@ -164,8 +164,12 @@ export function Model() {
             sub={`${card.per_class.length} classes, held-out machines`} />
           <Metric k="ANOMALY ROC-AUC" ko="이상 탐지" v={s.anomaly.roc_auc.toFixed(3)} bar={s.anomaly.roc_auc}
             sub={`positive rate ${(s.anomaly.positive_rate * 100).toFixed(0)}%`} />
-          <Metric k="RUL ERROR" ko="잔여수명 오차" v={s.rul.rmse.toFixed(0)} bar={0.38} warn
-            sub={`throws RMSE · ${(s.rul.coverage * 100).toFixed(0)}% interval coverage`} />
+          {/* Coverage, not RMSE, because a bar has to be the number above it.
+              This card once drew a fixed 38% bar under the RMSE, copied from
+              the design prototype — a figure computed from nothing. */}
+          <Metric k="RUL INTERVAL" ko="잔여수명 구간" v={`${(s.rul.coverage * 100).toFixed(1)}%`}
+            bar={s.rul.coverage} warn={s.rul.coverage < 1 - s.conformal.alpha}
+            sub={`coverage of ±${Math.round(s.rul.interval_halfwidth).toLocaleString()} throws · RMSE ${s.rul.rmse.toFixed(0)}`} />
         </div>
       )}
 

@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import type { CopilotReply } from '../lib/types'
+import { faultLabel } from '../lib/format'
 
-type Props = { eventId: string | null; verdict?: string; machineId?: string }
+type Props = {
+  eventId: string | null
+  verdict?: string
+  machineId?: string
+  /** The model's top class and its 90% prediction set, as class codes. */
+  fault?: string
+  predictionSet?: string[]
+}
 
 /**
  * Maintenance copilot. Turns a prediction into a work order a crew can act on.
@@ -17,7 +25,7 @@ type Props = { eventId: string | null; verdict?: string; machineId?: string }
  * PMD007 · 3d"). Nothing records that, so it is not here: a fabricated
  * maintenance record is the one thing on this page that could get someone hurt.
  */
-export function Copilot({ eventId, verdict, machineId }: Props) {
+export function Copilot({ eventId, verdict, machineId, fault, predictionSet }: Props) {
   const [reply, setReply] = useState<CopilotReply | null>(null)
   const [question, setQuestion] = useState('')
   const [busy, setBusy] = useState(false)
@@ -64,9 +72,7 @@ export function Copilot({ eventId, verdict, machineId }: Props) {
           ) : (
             <>
               <div className="text-[13px] font-medium leading-[1.45]" style={{ color: 'var(--color-ink-2)' }}>
-                {verdict && verdict !== 'Normal'
-                  ? `Inspect the ${verdict.toLowerCase()} circuit on ${machineId ?? 'this machine'} before the next scheduled throw.`
-                  : `No fault indicated on ${machineId ?? 'this machine'} for this throw.`}
+                {suggestion(machineId ?? 'this machine', verdict, fault, predictionSet)}
               </div>
               <div className="mt-2 text-[11px] leading-[1.5]" style={{ color: 'var(--color-label)' }}>
                 Draft a work order to have the evidence, the cited maintenance codes and the recommended
@@ -125,4 +131,25 @@ export function Copilot({ eventId, verdict, machineId }: Props) {
       </div>
     </div>
   )
+}
+
+/**
+ * The one-line action shown before a work order is drafted.
+ *
+ * It used to read only the top-1 verdict, so a throw whose prediction set was
+ * {Normal, supply undervoltage} — the evidence panel beside it saying the model
+ * cannot rule the fault out — was summarised here as "No fault indicated".
+ * That is the sentence that sends a crew away from a faulty machine. When the
+ * set holds more than one label, the action says so and names what is open.
+ */
+function suggestion(machine: string, verdict?: string, fault?: string, set?: string[]): string {
+  const others = (set ?? []).filter((c) => c !== fault).map(faultLabel)
+  if (others.length > 0) {
+    const leaning = verdict && verdict !== 'Normal' ? verdict.toLowerCase() : 'no fault'
+    return `Not conclusive on ${machine}: the model leans towards ${leaning} but cannot rule out ` +
+      `${others.join(', ')} at 90% coverage. Check before the next scheduled throw.`
+  }
+  return verdict && verdict !== 'Normal'
+    ? `Inspect the ${verdict.toLowerCase()} circuit on ${machine} before the next scheduled throw.`
+    : `No fault indicated on ${machine} for this throw.`
 }

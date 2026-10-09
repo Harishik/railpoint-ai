@@ -163,7 +163,8 @@ export function Diagnostics() {
         </Panel>
 
         <Panel title="Maintenance copilot" aside={<Note>정비 보조</Note>}>
-          <Copilot eventId={detail?.id ?? null} verdict={pred?.fault_en} machineId={detail?.machine_id} />
+          <Copilot eventId={detail?.id ?? null} verdict={pred?.fault_en} machineId={detail?.machine_id}
+            fault={pred?.fault} predictionSet={pred?.prediction_set} />
         </Panel>
       </div>
 
