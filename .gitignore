@@ -33,6 +33,9 @@ frontend/dist/
 
 # OS / editor
 .DS_Store
+# GitKraken CLI downloads its installer into archive-<random>/ in the
+# working directory; one 8 MB zip was committed by accident.
+/archive-*/
 .idea/
 .vscode/
 
