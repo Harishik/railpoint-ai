@@ -65,6 +65,11 @@ class ConvStem(nn.Module):
 
 
 class PositionalEncoding(nn.Module):
+    # Declared so the type checker knows the registered buffer is a Tensor:
+    # newer torch stubs type module attributes as `Tensor | Module`, which is
+    # not indexable.
+    pe: Tensor
+
     def __init__(self, d_model: int, max_len: int = 512):
         super().__init__()
         pe = torch.zeros(max_len, d_model)

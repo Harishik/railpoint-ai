@@ -11,6 +11,7 @@ import json
 import os
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -42,17 +43,19 @@ def _softmax(z: np.ndarray) -> np.ndarray:
 def infer(model, signals: np.ndarray, lengths: np.ndarray, batch: int = 256) -> dict[str, np.ndarray]:
     model.eval()
     seq, scalars, mask = prepare(signals, lengths)
-    logits, ruls, embeddings = [], [], []
+    logit_parts: list[np.ndarray] = []
+    ruls: list[np.ndarray] = []
+    embeddings: list[np.ndarray] = []
     for i in range(0, len(seq), batch):
         out = model(
             torch.from_numpy(seq[i : i + batch]),
             torch.from_numpy(scalars[i : i + batch]),
             torch.from_numpy(mask[i : i + batch]),
         )
-        logits.append(out["fault"].numpy())
+        logit_parts.append(out["fault"].numpy())
         ruls.append(rul_invert(out["rul"]).numpy())
         embeddings.append(out["embedding"].numpy())
-    logits = np.concatenate(logits)
+    logits = np.concatenate(logit_parts)
     return {
         "logits": logits,
         "probs": _softmax(logits),
@@ -62,7 +65,10 @@ def infer(model, signals: np.ndarray, lengths: np.ndarray, batch: int = 256) -> 
     }
 
 
-def _normal_reference() -> dict[str, np.ndarray]:
+# Typed `Any` rather than `np.ndarray` because it is spread into np.savez, and
+# numpy's stubs give savez a typed `allow_pickle: bool` keyword: a
+# dict[str, ndarray] spread cannot be proven not to set it to an array.
+def _normal_reference() -> dict[str, Any]:
     """Mean and standard deviation of each feature over healthy events.
 
     Computed from the stratified sweep's NORMAL class only, so a deviation

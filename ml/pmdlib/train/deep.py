@@ -173,17 +173,19 @@ def train(cfg: TrainConfig | None = None, verbose: bool = True) -> tuple[PointMa
             totals["n"] += bs
 
         model.eval()
-        preds, trues, rul_err = [], [], []
+        pred_parts: list[np.ndarray] = []
+        true_parts: list[np.ndarray] = []
+        rul_err: list[np.ndarray] = []
         with torch.no_grad():
             for seq, scalars, mask, y, rul in val_dl:
                 out = model(seq, scalars, mask)
-                preds.append(out["fault"].argmax(1).numpy())
-                trues.append(y.numpy())
+                pred_parts.append(out["fault"].argmax(1).numpy())
+                true_parts.append(y.numpy())
                 has_rul = rul > CENSORED
                 if has_rul.any():
                     pred_cycles = rul_invert(out["rul"][has_rul])
                     rul_err.append((pred_cycles - rul[has_rul]).numpy())
-        preds, trues = np.concatenate(preds), np.concatenate(trues)
+        preds, trues = np.concatenate(pred_parts), np.concatenate(true_parts)
         macro_f1 = float(f1_score(trues, preds, average="macro", zero_division=0))
         acc = float((preds == trues).mean())
         rmse = float(np.sqrt(np.mean(np.concatenate(rul_err) ** 2))) if rul_err else float("nan")
