@@ -332,6 +332,154 @@ def test_copilot_works_without_api_credentials(monkeypatch):
     assert "Work order" in reply.answer
 
 
+
+class _FakeOllama:
+    """Stands in for the Ollama HTTP API at the one seam the copilot uses."""
+
+    def __init__(self, models=("qwen3.5:4b", "gemma4:e4b"), reply="점검 지시: 기억쇠 확인.\nCheck the latch.",
+                 reject_think=False):
+        self.models, self.reply, self.reject_think = list(models), reply, reject_think
+        self.chats: list[dict] = []
+
+    def __call__(self, path, payload, timeout):
+        from app.services.copilot import OllamaError
+
+        if path == "/api/tags":
+            return {"models": [{"name": n, "size": (i + 1) * 3_400_000_000} for i, n in enumerate(self.models)]}
+        if path == "/api/chat":
+            self.chats.append(dict(payload))
+            if self.reject_think and "think" in payload:
+                raise OllamaError(f'"{payload["model"]}" does not support thinking')
+            return {"message": {"role": "assistant", "content": "<think>hidden</think>" + self.reply}}
+        raise AssertionError(path)
+
+
+def _sample_event():
+    return {
+        "id": "E1", "machine_id": "PMD055", "throw_samples": 590,
+        "prediction": {"fault": "E01_LOCK_LATCH", "fault_ko": "기억쇠", "fault_en": "lock latch",
+                       "err_code": "E01", "confidence": 0.91, "prediction_set": ["E01_LOCK_LATCH"],
+                       "set_size": 1, "anomaly_score": 900.0, "severity": "critical"},
+        "attributions": [],
+    }
+
+
+def test_copilot_drafts_with_a_local_model(monkeypatch):
+    from app.services import copilot
+
+    fake = _FakeOllama()
+    monkeypatch.setattr(copilot, "_ollama", fake)
+    reply = copilot.answer(_sample_event(), None, model="qwen3.5:4b")
+
+    assert (reply.source, reply.model, reply.fallback_reason) == ("ollama", "qwen3.5:4b", None)
+    assert "<think>" not in reply.answer, "inline reasoning must not reach the technician"
+    sent = fake.chats[0]
+    assert sent["stream"] is False and sent["think"] is False
+    assert [m["role"] for m in sent["messages"]] == ["system", "user"]
+    assert sent["messages"][0]["content"] == copilot.SYSTEM_PROMPT, "same grounding as Claude"
+
+
+def test_a_model_that_cannot_think_is_retried_without_the_flag(monkeypatch):
+    from app.services import copilot
+
+    fake = _FakeOllama(reject_think=True)
+    monkeypatch.setattr(copilot, "_ollama", fake)
+    reply = copilot.answer(_sample_event(), None, model="gemma4:e4b")
+    assert reply.source == "ollama"
+    assert "think" in fake.chats[0] and "think" not in fake.chats[1]
+
+
+
+def test_prediction_set_labels_reach_the_model_described():
+    """Seen live: given a {NORMAL, MISALIGNMENT} set as bare labels, qwen3.5:4b
+    told the crew to check the locking latch, detector, motor, relay and cable."""
+    from app.services import copilot
+
+    event = _sample_event()
+    event["prediction"].update(fault="NORMAL", fault_ko="정상", err_code=None,
+                               prediction_set=["NORMAL", "MISALIGNMENT"], set_size=2)
+    block = copilot._context_block(copilot.build_context(event, None))
+    assert "MISALIGNMENT = 밀착 불량 (Switch-rail closure out of tolerance); no Sehwa maintenance code" in block
+    assert "NORMAL = 정상" in block
+
+
+def test_unreachable_ollama_falls_back_and_says_why():
+    """The autouse fixture points the copilot at a closed port."""
+    from app.services import copilot
+
+    reply = copilot.answer(_sample_event(), None)
+    assert reply.source == "deterministic"
+    assert reply.fallback_reason and "not reachable" in reply.fallback_reason
+    assert "E01" in reply.answer, "the grounded draft still cites the code"
+
+
+def test_default_model_falls_back_to_an_installed_one(monkeypatch):
+    from app.config import settings
+    from app.services import copilot
+
+    monkeypatch.setattr(copilot, "_ollama", _FakeOllama(models=["llama3.2:3b"]))
+    monkeypatch.setattr(settings, "ollama_model", "not-installed:1b")
+    assert copilot.model_menu()["default"] == "llama3.2:3b"
+
+
+
+def test_model_menu_lists_what_a_person_pulled(monkeypatch):
+    """Shape taken from Ollama 0.40's /api/tags on a real machine: one name per
+    runner, plus a digest-named alias. An embedding model is added because
+    those are listed too and cannot write."""
+    from app.services import copilot
+
+    digest = "96f38c742e0a10e194b237d2ffb8b55925ebfeed9d27df72688f565e773569e7"
+    tags = {"models": [
+        {"name": "qwen3.5:4b", "size": 3_389_983_735, "digest": "3c3a" + "0" * 60,
+         "capabilities": ["completion", "thinking"]},
+        {"name": "qwen3.5:4b", "size": 3_397_841_620, "digest": digest, "capabilities": ["completion"]},
+        {"name": f"llamacpp:{digest}", "size": 3_397_841_620, "digest": digest, "capabilities": ["completion"]},
+        {"name": "nomic-embed-text:latest", "size": 274_000_000, "digest": "ab" * 32, "capabilities": ["embedding"]},
+        {"name": "gemma4:e4b", "size": 9_608_350_718, "digest": "c6" * 32},
+    ]}
+    monkeypatch.setattr(copilot, "_ollama", lambda path, payload, timeout: tags)
+    assert copilot.installed_models() == [{"name": "qwen3.5:4b", "size_gb": 3.4},
+                                          {"name": "gemma4:e4b", "size_gb": 9.6}]
+
+
+def test_claude_provider_without_a_key_says_so(monkeypatch):
+    from app.config import settings
+    from app.services import copilot
+
+    monkeypatch.setattr(settings, "copilot_provider", "claude")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    reply = copilot.answer(_sample_event(), None)
+    assert reply.source == "deterministic" and "Claude API key" in reply.fallback_reason
+
+
+def test_dashboard_may_only_choose_installed_local_models(client, monkeypatch):
+    """Model choice is offered because local models cost nothing per token.
+    An uninstalled name is refused, and so is any choice when the operator has
+    configured the billed Claude provider."""
+    from app.config import settings
+    from app.main import stream
+    from app.services import copilot
+
+    monkeypatch.setattr(copilot, "_ollama", _FakeOllama())
+    menu = client.get("/api/copilot/models").json()
+    assert [m["name"] for m in menu["models"]] == ["qwen3.5:4b", "gemma4:e4b"]
+    assert menu["default"] == "qwen3.5:4b"
+
+    event_id = stream.events[0]["id"] if stream.events else None
+    if event_id is None:
+        stream.step()
+        event_id = stream.events[0]["id"]
+    ok = client.post("/api/copilot", json={"event_id": event_id, "model": "gemma4:e4b"})
+    assert ok.status_code == 200 and ok.json()["model"] == "gemma4:e4b"
+    assert client.post("/api/copilot", json={"event_id": event_id, "model": "llama-70b"}).status_code == 400
+
+    monkeypatch.setattr(settings, "copilot_provider", "claude")
+    assert client.post("/api/copilot", json={"event_id": event_id, "model": "qwen3.5:4b"}).status_code == 400
+    assert client.get("/api/copilot/models").json()["models"] == []
+
+
 def test_copilot_404s_on_unknown_event(client):
     r = client.post("/api/copilot", json={"event_id": "does-not-exist"})
     assert r.status_code == 404

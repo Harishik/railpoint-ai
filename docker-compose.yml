@@ -7,6 +7,16 @@ services:
   api:
     build: { context: ., dockerfile: Dockerfile }
     ports: ["8000:8000"]
+    # The copilot drafts work orders with a local model through Ollama running
+    # on the host (`ollama serve`). Without it, drafts come from the
+    # deterministic writer and the panel says so. On Linux, start Ollama with
+    # OLLAMA_HOST=0.0.0.0 so the container can reach it.
+    environment:
+      RAILPOINT_OLLAMA_URL: ${RAILPOINT_OLLAMA_URL:-http://host.docker.internal:11434}
+      RAILPOINT_OLLAMA_MODEL: ${RAILPOINT_OLLAMA_MODEL:-qwen3.5:4b}
+      RAILPOINT_COPILOT_PROVIDER: ${RAILPOINT_COPILOT_PROVIDER:-ollama}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    extra_hosts: ["host.docker.internal:host-gateway"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 10s

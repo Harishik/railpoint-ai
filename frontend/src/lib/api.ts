@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Alert, CopilotReply, EventDetail, EventSummary, Machine, ModelCard, Stats } from './types'
+import type { Alert, CopilotModels, CopilotReply, EventDetail, EventSummary, Machine, ModelCard, Stats } from './types'
+
+/** A response the server sent but refused. `message` is its stated reason. */
+export class HttpError extends Error {
+  readonly status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path)
@@ -13,7 +22,11 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+  if (!res.ok) {
+    // FastAPI puts the reason in `detail`; it is more use to a person than "400 Bad Request".
+    const detail = await res.json().then((b: { detail?: unknown }) => b.detail, () => undefined)
+    throw new HttpError(res.status, typeof detail === 'string' ? detail : `${res.status} ${res.statusText}`)
+  }
   return res.json() as Promise<T>
 }
 
@@ -25,8 +38,9 @@ export const api = {
   event: (id: string) => get<EventDetail>(`/api/events/${id}`),
   alerts: () => get<Alert[]>('/api/alerts'),
   model: () => get<ModelCard>('/api/model'),
-  copilot: (eventId: string, question?: string) =>
-    post<CopilotReply>('/api/copilot', { event_id: eventId, question }),
+  copilotModels: () => get<CopilotModels>('/api/copilot/models'),
+  copilot: (eventId: string, question?: string, model?: string) =>
+    post<CopilotReply>('/api/copilot', { event_id: eventId, question, model }),
   alertAction: (id: string, action: 'acknowledge' | 'resolve' | 'reopen') =>
     fetch(`/api/alerts/${id}/${action}`, { method: 'POST' }).then((r) => r.json() as Promise<Alert>),
 }

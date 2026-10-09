@@ -115,3 +115,6 @@ class CopilotRequest(BaseModel):
 
     event_id: str
     question: str | None = None
+    #: A locally installed Ollama model to draft with. Validated against what is
+    #: installed; never a Claude model, which is the operator's to choose.
+    model: str | None = Field(default=None, max_length=200)

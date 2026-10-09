@@ -18,21 +18,27 @@ equipment. This drafts paperwork and suggests what to inspect; it does not
 authorise train movements, clear a route, or declare a machine fit for service.
 That is stated in the system prompt and repeated in the response.
 
-**It works without an API key.** A reviewer who clones this repository has no
-`ANTHROPIC_API_KEY`, and a demo that shows an error box is a demo that does not
-work. The deterministic drafter below builds the same work order from the same
-grounded context, so the feature degrades to "less fluent" rather than "absent".
+**It works without an API key.** By default it drafts with a local model through
+Ollama — no key, no per-token bill — and anyone using the console may choose
+among the models installed on the machine. The Claude API remains available to
+an operator who configures it. Whatever fails, the deterministic drafter below
+builds the same work order from the same grounded context, so the feature
+degrades to "less fluent" rather than "absent", and says why it degraded.
 """
 
 from __future__ import annotations
 
+import json
 import os
+import re
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
-from ..config import settings
+from pmdlib.sim.spec import FAULT_META, FAULT_TO_ERR_CODE, FaultClass
 
-MODEL = "claude-opus-5"
+from ..config import settings
 
 #: The decoded Sehwa maintenance codes. Component names, not failure modes -
 #: see docs/DATA.md. The copilot may cite these and nothing else.
@@ -105,18 +111,26 @@ engineer's decision, and give them the evidence instead.
 
 UNCERTAINTY - the conformal prediction set is the model's honest uncertainty. If \
 it contains more than one label, say so plainly and describe what would \
-distinguish them, rather than presenting the top label as settled.
+distinguish them, rather than presenting the top label as settled. Direct checks \
+at what the labels in the set describe; do not cite a maintenance code that no \
+label in the set maps to.
 
-STYLE - write for a maintenance technician on shift. Be specific and brief. Lead \
-with what to check first. Use the Korean component name alongside the English one \
-where a code is cited."""
+STYLE - write for a maintenance technician on shift. Be specific and brief: a \
+work order should fit in about 200 words. Lead with what to check first. Use the \
+Korean component name alongside the English one where a code is cited. Write plain \
+text with numbered steps, not Markdown - the console shows your text exactly as \
+written, so asterisks and hashes appear as clutter."""
 
 
 @dataclass
 class CopilotReply:
     answer: str
-    source: str          # "claude" | "deterministic"
+    source: str          # "ollama" | "claude" | "deterministic"
     model: str | None
+    #: Why a language model was not used, when it was not. Shown in the
+    #: dashboard: a fallback the operator cannot see the reason for looks like
+    #: the copilot simply never using a model.
+    fallback_reason: str | None
     grounded_on: dict[str, Any]
     citations: list[str]
     disclaimer: str
@@ -164,6 +178,22 @@ def build_context(event: dict, machine: dict | None) -> dict[str, Any]:
     }
 
 
+def _describe(label: str) -> str:
+    """A class label as a technician reads it, and its Sehwa code if it has one.
+
+    A bare label such as MISALIGNMENT tells a model nothing about which part to
+    check, and a small local model given only that falls back on listing every
+    maintenance code in the table.
+    """
+    try:
+        fault = FaultClass(label)
+    except ValueError:
+        return label
+    ko, en, _, _ = FAULT_META[fault]
+    code = FAULT_TO_ERR_CODE.get(fault)
+    return f"{label} = {ko} ({en}); " + (f"Sehwa code {code}" if code else "no Sehwa maintenance code")
+
+
 def _context_block(ctx: dict[str, Any]) -> str:
     lines = [
         f"Event {ctx['event_id']} on machine {ctx['machine_id']}, "
@@ -174,11 +204,12 @@ def _context_block(ctx: dict[str, Any]) -> str:
     ps = ctx.get("prediction_set") or []
     if len(ps) > 1:
         lines.append(
-            f"Conformal prediction set at 90% coverage contains {len(ps)} labels: "
-            f"{', '.join(ps)}. The model cannot rule these out."
+            f"Conformal prediction set at 90% coverage contains {len(ps)} labels, "
+            "which the model cannot rule out:"
         )
+        lines.extend(f"  - {_describe(label)}" for label in ps)
     elif ps:
-        lines.append(f"Conformal prediction set contains only {ps[0]}.")
+        lines.append(f"Conformal prediction set contains only {_describe(ps[0])}.")
     if ctx["err_code"]:
         lines.append(
             f"Sehwa maintenance code {ctx['err_code']} = {ctx['component_ko']} "
@@ -278,60 +309,172 @@ def _has_credentials() -> bool:
     return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
 
 
-def answer(event: dict, machine: dict | None, question: str | None = None) -> CopilotReply:
-    """Draft a work order, or answer a question about this event."""
+# -- Ollama -------------------------------------------------------------------
+# Standard library only: the endpoint is two JSON calls, and a client library
+# would be a dependency every clone installs for a feature that is optional.
+
+
+class OllamaError(RuntimeError):
+    pass
+
+
+def _ollama(path: str, payload: dict | None, timeout: float) -> dict:
+    url = settings.ollama_url.rstrip("/") + path
+    data = None if payload is None else json.dumps(payload).encode()
+    req = urllib.request.Request(
+        url, data=data, headers={"Content-Type": "application/json"},
+        method="GET" if payload is None else "POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        # Ollama reports a missing model as a 404 with a JSON error body.
+        try:
+            detail = json.loads(exc.read().decode()).get("error", str(exc))
+        except (ValueError, OSError):
+            detail = str(exc)
+        raise OllamaError(detail) from exc
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise OllamaError(f"Ollama not reachable at {settings.ollama_url}") from exc
+
+
+def installed_models(timeout: float = 2.0) -> list[dict[str, Any]]:
+    """Models installed in the local Ollama that can write, smallest first.
+
+    `/api/tags` is not quite a list of models. Newer Ollama lists a name once
+    per runner that can serve it, and lists a runner's blob under an alias
+    named after its digest; neither is something a person pulled. Embedding
+    models are listed too and cannot draft anything. Raises OllamaError.
+    """
+    tags = _ollama("/api/tags", None, timeout)
+    seen: set[str] = set()
+    models = []
+    for m in tags.get("models", []):
+        name = m.get("name", "")
+        caps = m.get("capabilities")
+        if not name or name in seen:
+            continue
+        if caps is not None and "completion" not in caps:
+            continue
+        if m.get("digest") and name.split(":", 1)[-1] == m["digest"]:
+            continue
+        seen.add(name)
+        models.append({"name": name, "size_gb": round(m.get("size", 0) / 1e9, 1)})
+    return sorted(models, key=lambda m: (m["size_gb"], m["name"]))
+
+
+def model_menu() -> dict[str, Any]:
+    """What the dashboard may offer. Only free, local models are selectable."""
+    if settings.copilot_provider == "claude":
+        return {"provider": "claude", "default": settings.claude_model,
+                "models": [], "unavailable": None if _has_credentials() else "no Claude API key"}
+    try:
+        models = installed_models()
+    except OllamaError as exc:
+        return {"provider": "ollama", "default": None, "models": [], "unavailable": str(exc)}
+    names = [m["name"] for m in models]
+    default = settings.ollama_model if settings.ollama_model in names else (names[0] if names else None)
+    return {"provider": "ollama", "default": default, "models": models,
+            "unavailable": None if names else "no models installed - run `ollama pull <model>`"}
+
+
+_THINK = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def _draft_ollama(user_text: str, model: str) -> str:
+    payload: dict[str, Any] = {
+        "model": model,
+        "stream": False,
+        # A reasoning pass roughly doubles the wait on a CPU and is not shown
+        # to the technician. Models that cannot think reject the flag, hence
+        # the retry without it.
+        "think": False,
+        "options": {"temperature": 0.2, "num_predict": 1200},
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_text},
+        ],
+    }
+    try:
+        out = _ollama("/api/chat", payload, settings.ollama_timeout_s)
+    except OllamaError as exc:
+        if "think" not in str(exc).lower():
+            raise
+        payload.pop("think")
+        out = _ollama("/api/chat", payload, settings.ollama_timeout_s)
+    # Some models still inline their reasoning; the technician gets the answer.
+    text = _THINK.sub("", out.get("message", {}).get("content", "")).strip()
+    if not text:
+        raise OllamaError(f"{model} returned no text")
+    return text
+
+
+def _draft_claude(user_text: str) -> str:
+    import anthropic
+
+    response = anthropic.Anthropic().messages.create(
+        model=settings.claude_model,
+        max_tokens=16000,
+        system=SYSTEM_PROMPT,
+        thinking={"type": "adaptive"},
+        messages=[{"role": "user", "content": user_text}],
+    )
+    if response.stop_reason == "refusal":
+        raise RuntimeError("model declined this request")
+    text = "\n".join(b.text for b in response.content if b.type == "text").strip()
+    if not text:
+        raise RuntimeError("model returned no text")
+    return text
+
+
+def answer(
+    event: dict, machine: dict | None, question: str | None = None, model: str | None = None,
+) -> CopilotReply:
+    """Draft a work order, or answer a question about this event.
+
+    ``model`` picks a local Ollama model and must already be validated against
+    `installed_models()`; it is ignored for the Claude provider, whose model is
+    the operator's to choose.
+    """
     ctx = build_context(event, machine)
     citations = [ctx["err_code"]] if ctx["err_code"] else []
 
-    if not (settings.copilot_enabled and _has_credentials()):
-        return CopilotReply(
-            answer=_deterministic(ctx, question),
-            source="deterministic",
-            model=None,
-            grounded_on=ctx,
-            citations=citations,
-            disclaimer=DISCLAIMER_EN,
-        )
+    def reply(text: str, source: str, used: str | None, reason: str | None) -> CopilotReply:
+        return CopilotReply(answer=text, source=source, model=used, fallback_reason=reason,
+                            grounded_on=ctx, citations=citations, disclaimer=DISCLAIMER_EN)
+
+    def fallback(reason: str) -> CopilotReply:
+        # An operations console must not lose a feature because a model call
+        # failed. Fall back to the grounded draft, and say which path ran and why.
+        print(f"[copilot] falling back to the deterministic draft: {reason}")
+        return reply(_deterministic(ctx, question), "deterministic", None, reason)
+
+    if not settings.copilot_enabled:
+        return fallback("the language-model copilot is disabled")
+
+    user_text = _context_block(ctx)
+    user_text += (
+        f"\n\nThe technician asks: {question}"
+        if question
+        else "\n\nDraft the work order for this event, in Korean and English."
+    )
+
+    if settings.copilot_provider == "claude":
+        if not _has_credentials():
+            return fallback("no Claude API key is configured")
+        try:
+            return reply(_draft_claude(user_text), "claude", settings.claude_model, None)
+        except Exception as exc:  # noqa: BLE001 - any failure must still produce a draft
+            return fallback(f"Claude call failed: {exc}")
 
     try:
-        import anthropic
-
-        client = anthropic.Anthropic()
-        user_text = _context_block(ctx)
-        user_text += (
-            f"\n\nThe technician asks: {question}"
-            if question
-            else "\n\nDraft the work order for this event, in Korean and English."
-        )
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=16000,
-            system=SYSTEM_PROMPT,
-            thinking={"type": "adaptive"},
-            messages=[{"role": "user", "content": user_text}],
-        )
-        if response.stop_reason == "refusal":
-            raise RuntimeError("model declined this request")
-        text = "\n".join(b.text for b in response.content if b.type == "text").strip()
-        if not text:
-            raise RuntimeError("model returned no text")
-        return CopilotReply(
-            answer=text,
-            source="claude",
-            model=MODEL,
-            grounded_on=ctx,
-            citations=citations,
-            disclaimer=DISCLAIMER_EN,
-        )
+        menu = model_menu() if model is None else None
+        chosen = model or (menu["default"] if menu else None)
+        if not chosen:
+            return fallback((menu or {}).get("unavailable") or "no local model available")
+        return reply(_draft_ollama(user_text, chosen), "ollama", chosen, None)
+    except OllamaError as exc:
+        return fallback(str(exc))
     except Exception as exc:  # noqa: BLE001 - any failure must still produce a draft
-        # An operations console must not lose a feature because a network call
-        # failed. Fall back to the grounded draft and say which path produced it.
-        print(f"[copilot] falling back to the deterministic draft: {exc}")
-        return CopilotReply(
-            answer=_deterministic(ctx, question),
-            source="deterministic",
-            model=None,
-            grounded_on=ctx,
-            citations=citations,
-            disclaimer=DISCLAIMER_EN,
-        )
+        return fallback(f"local model failed: {exc}")

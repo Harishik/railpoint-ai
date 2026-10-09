@@ -226,19 +226,41 @@ async def copilot(body: CopilotRequest) -> dict:
     record = stream.find_event(body.event_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"unknown event {body.event_id}")
+    if body.model is not None:
+        # Only free, local models are the caller's to choose. A Claude model is
+        # billed to the operator's key, so it is never selectable from here.
+        if settings.copilot_provider != "ollama":
+            raise HTTPException(status_code=400, detail="model choice is fixed by the operator")
+        menu = await asyncio.to_thread(copilot_service.model_menu)
+        if body.model not in [mm["name"] for mm in menu["models"]]:
+            raise HTTPException(status_code=400, detail=f"{body.model!r} is not installed in Ollama")
     machine = stream.machines.get(record["machine_id"])
-    reply = copilot_service.answer(
+    # Off the event loop. This handler is async, and the draft is a blocking
+    # network call — seconds with Claude, up to a minute with a local model on
+    # CPU — so calling it directly froze the live feed and every other request
+    # for as long as the draft took.
+    reply = await asyncio.to_thread(
+        copilot_service.answer,
         event=record,
         machine=stream.machine_view(machine) if machine else None,
         question=body.question,
+        model=body.model,
     )
     return {
         "answer": reply.answer,
         "source": reply.source,
         "model": reply.model,
+        "fallback_reason": reply.fallback_reason,
         "citations": reply.citations,
         "disclaimer": reply.disclaimer,
     }
+
+
+@app.get("/api/copilot/models")
+async def copilot_models() -> dict:
+    """The models the dashboard may offer: installed local models, or none
+    when the operator has configured the Claude provider."""
+    return await asyncio.to_thread(copilot_service.model_menu)
 
 
 @app.websocket("/ws/stream")

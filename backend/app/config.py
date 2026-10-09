@@ -32,11 +32,23 @@ class Settings(BaseSettings):
     fleet_size: int = 12
     stream_seed: int = 7
 
-    #: The maintenance copilot calls the Claude API when credentials are present.
-    #: With this off, or with no ANTHROPIC_API_KEY, it still produces a grounded
-    #: work order from a deterministic drafter - so a reviewer who clones this
-    #: repo sees the real feature rather than an error box.
+    #: The maintenance copilot drafts work orders with a language model. Any
+    #: failure — no model reachable, model missing, timeout — falls back to a
+    #: deterministic drafter built from the same grounded context, so a reviewer
+    #: who clones this repo sees the real feature rather than an error box.
     copilot_enabled: bool = True
+    #: "ollama" runs a local model: no API key and no per-token bill, so anyone
+    #: using the console may choose among the models installed on this machine.
+    #: "claude" uses the Claude API and the operator's key; its model is fixed
+    #: here and never selectable from the dashboard, because it is billed.
+    copilot_provider: str = "ollama"
+    ollama_url: str = "http://127.0.0.1:11434"
+    #: Used when installed; otherwise the first installed model. `ollama pull`
+    #: a model to make it available.
+    ollama_model: str = "qwen3.5:4b"
+    #: Local models on CPU are slow; a bilingual work order can take a minute.
+    ollama_timeout_s: float = 240.0
+    claude_model: str = "claude-opus-5"
 
     #: Risk thresholds driving alert severity.
     risk_warning: float = 0.35

@@ -90,10 +90,21 @@ export type CopilotReply = {
   answer: string
   /** Which path produced the text. Shown in the UI: a work order whose
    *  provenance is unclear is one nobody should sign. */
-  source: 'claude' | 'deterministic'
+  source: 'ollama' | 'claude' | 'deterministic'
   model: string | null
+  /** Why no language model wrote this, when one was configured. */
+  fallback_reason: string | null
   citations: string[]
   disclaimer: string
+}
+
+/** What the copilot panel may offer. Only local models are ever listed: a
+ *  billed Claude model is the operator's choice, made in configuration. */
+export type CopilotModels = {
+  provider: 'ollama' | 'claude'
+  default: string | null
+  models: { name: string; size_gb: number }[]
+  unavailable: string | null
 }
 
 export interface ModelCard {

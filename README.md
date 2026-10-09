@@ -154,6 +154,24 @@ Then open **http://localhost:8000**. The first start takes about 30 seconds
 while torch and the model weights load. The trained network ships in
 `experiments/artifacts/`, so this serves the real model, not a fallback.
 
+### Maintenance copilot
+
+The Diagnostics page drafts a work order for the selected throw, citing the
+Sehwa maintenance codes and the model's own uncertainty. It runs on a local
+model through [Ollama](https://ollama.com), so nothing leaves the machine and
+nothing is billed:
+
+```bash
+ollama pull qwen3.5:4b
+```
+
+Any model you have pulled appears in the panel's model menu. Without Ollama
+the panel still works: drafts come from a deterministic writer, and the badge
+and a note under the draft say which wrote it and why. To use Claude instead,
+set `RAILPOINT_COPILOT_PROVIDER=claude` and `ANTHROPIC_API_KEY`; the model is
+then fixed by `RAILPOINT_CLAUDE_MODEL`, never chosen from the dashboard,
+because it is billed.
+
 ### Developing
 
 ```bash
