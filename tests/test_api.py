@@ -232,6 +232,18 @@ def test_health_reports_a_calibration_problem(client, monkeypatch):
     assert body["calibration"] == "calibration is malformed"
 
 
+
+def test_live_stream_simulates_the_same_horizon_as_training():
+    """The stream simulated 4,000 cycles while training stopped at 800, so the
+    console asked the RUL head about lifetimes it had never been trained on.
+    Both now read one constant."""
+    from app.main import stream
+    from pmdlib.sim.degradation import SERVICE_HORIZON_CYCLES
+
+    for st in stream.machines.values():
+        assert st.trajectory.health.size == SERVICE_HORIZON_CYCLES
+
+
 def test_repeated_faults_collapse_into_one_alert(client):
     """A machine past the symptom threshold raises the same condition on every
     throw. Appending one alert per throw floods the bounded deque and evicts
@@ -323,3 +335,4 @@ def test_copilot_works_without_api_credentials(monkeypatch):
 def test_copilot_404s_on_unknown_event(client):
     r = client.post("/api/copilot", json={"event_id": "does-not-exist"})
     assert r.status_code == 404
+

@@ -119,3 +119,26 @@ def test_split_is_consistent_across_datasets(fleet, stratified):
     for meta in (fleet[2], stratified[2]):
         for machine_id, split in zip(meta.machine_id, meta.split, strict=True):
             assert split == machine_split(machine_id)
+
+
+def test_training_covers_the_whole_service_life(fleet):
+    """RP-26. The training fleet used to record its first 800 throws one by one,
+    so only machines that died young ever reached a failure, and the RUL head
+    never saw a lifetime longer than 800 cycles. Recorded throws now span the
+    whole service life."""
+    from pmdlib.sim.degradation import SERVICE_HORIZON_CYCLES
+    from pmdlib.sim.fleet import DatasetConfig
+
+    assert DatasetConfig().horizon_cycles == SERVICE_HORIZON_CYCLES
+    meta = fleet[2]
+    assert meta.cycle.min() == 0
+    assert meta.cycle.max() >= 0.99 * SERVICE_HORIZON_CYCLES
+    assert meta.groupby("machine_id").cycle.nunique().eq(meta.groupby("machine_id").size()).all(), \
+        "a cycle was recorded twice for one machine"
+
+
+def test_more_throws_than_life_is_refused():
+    from pmdlib.sim.fleet import DatasetConfig, generate_dataset
+
+    with pytest.raises(ValueError):
+        generate_dataset(DatasetConfig(n_machines=2, cycles_per_machine=50, horizon_cycles=10))

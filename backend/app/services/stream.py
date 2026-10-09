@@ -27,6 +27,7 @@ if str(ML_ROOT) not in sys.path:
     sys.path.insert(0, str(ML_ROOT))
 
 from pmdlib.sim.degradation import (  # noqa: E402
+    SERVICE_HORIZON_CYCLES,  # noqa: E402
     severity_from_health,
     simulate_trajectory,
 )
@@ -91,11 +92,13 @@ class FleetStream:
         for i in range(settings.fleet_size):
             spec = SUPPLY_CLASS_B if self.rng.random() < 0.3 else CALIBRATED
             mid = f"PMD{i + 1:03d}"
-            traj = simulate_trajectory(4000, rng=self.rng)
+            traj = simulate_trajectory(SERVICE_HORIZON_CYCLES, rng=self.rng)
             st = MachineState(id=mid, spec=spec, trajectory=traj, x=coords[i][0], y=coords[i][1])
             # Start each machine somewhere different in its life so the fleet is
             # not uniformly brand new.
-            st.cycle = int(self.rng.integers(0, 2500))
+            # Somewhere in the first five-eighths of its life, so the fleet is
+            # neither uniformly new nor uniformly about to fail.
+            st.cycle = int(self.rng.integers(0, SERVICE_HORIZON_CYCLES * 5 // 8))
             st.health_trend.extend(
                 float(traj.health[max(0, st.cycle - k)]) for k in range(30, 0, -1)
             )

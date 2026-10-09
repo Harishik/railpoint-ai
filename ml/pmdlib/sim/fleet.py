@@ -15,6 +15,7 @@ import pandas as pd
 
 from ..utils.splits import DEFAULT_FRACS, machine_split
 from .degradation import (
+    SERVICE_HORIZON_CYCLES,
     Trajectory,
     severity_from_health,
     simulate_trajectory,
@@ -42,9 +43,17 @@ SHOCK_FAULTS: tuple[FaultClass, ...] = tuple(
 @dataclass
 class DatasetConfig:
     n_machines: int = 64
-    #: Long enough that a useful fraction of the fleet runs to failure and RUL
-    #: is learnable, while per-throw anomaly prevalence stays realistic (~16%).
+    #: Throws *recorded* per machine, spread evenly across ``horizon_cycles``.
+    #: Recording a sample of a long life rather than every throw of a short one
+    #: is what lets most machines reach a failure without the dataset — and the
+    #: training run — growing five-fold. Measured over three seeds: 62% of
+    #: machines fail in-horizon and `calib` receives 2-4 failing machines, against
+    #: 21% and 0-2 when the first 800 throws were recorded one by one. Fault
+    #: prevalence stays realistic (15% of throws, from 10%).
     cycles_per_machine: int = 800
+    #: Simulated service life. Defaults to the live stream's horizon so training
+    #: covers every RUL the console will ask about.
+    horizon_cycles: int = SERVICE_HORIZON_CYCLES
     class_b_frac: float = 0.30
     unit_spread: float = 0.06
     #: Per-event probability of a sudden-onset fault, independent of health.
@@ -115,14 +124,25 @@ def generate_dataset(cfg: DatasetConfig | None = None) -> tuple[np.ndarray, np.n
     rows: list[dict] = []
     k = 0
 
+    if cfg.horizon_cycles < cfg.cycles_per_machine:
+        raise ValueError(
+            f"horizon_cycles ({cfg.horizon_cycles}) must be at least cycles_per_machine "
+            f"({cfg.cycles_per_machine}): a machine cannot record more throws than it lives"
+        )
+    # Evenly spaced through the service life. Every per-cycle quantity below —
+    # health, RUL, fault activity, the season — is read at the true cycle number.
+    recorded = np.unique(
+        np.linspace(0, cfg.horizon_cycles - 1, cfg.cycles_per_machine).round().astype(int)
+    )
+
     for m, spec in enumerate(specs):
         machine_id = f"PMD{m + 1:03d}"
         traj: Trajectory = simulate_trajectory(
-            cfg.cycles_per_machine, rng=rng, cycles_per_year=cfg.cycles_per_year
+            cfg.horizon_cycles, rng=rng, cycles_per_year=cfg.cycles_per_year
         )
         direction = "N"
 
-        for cycle in range(cfg.cycles_per_machine):
+        for cycle in (int(c) for c in recorded):
             # Points normally alternate, but a route can call the same position
             # twice in a row, so this is not a strict alternation.
             if rng.random() < 0.82:

@@ -21,6 +21,12 @@ from .spec import DEGRADING_FAULTS, FaultClass
 
 #: Health below this counts as failed; the machine is withdrawn for maintenance.
 FAILURE_THRESHOLD = 0.25
+#: How many throws of a machine's service life are simulated — for training data
+#: *and* for the live stream. One constant, because the two used to differ: the
+#: stream simulated 4,000 cycles while the training fleet stopped at 800, so the
+#: RUL head was asked about lifetimes it had never seen, and only 11 of 64
+#: training machines ever reached a failure (docs/BUGS.md RP-26).
+SERVICE_HORIZON_CYCLES = 4000
 #: Cycles over which an ACCELERATING machine's wear rate ramps up. Absolute,
 #: so a trajectory does not change shape with the simulation horizon.
 ACCELERATION_SCALE_CYCLES = 1200
